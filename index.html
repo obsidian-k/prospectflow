@@ -272,6 +272,8 @@ body{min-height:100vh}
     <input id="i_pkey" type="password" placeholder="a259f228bf749475…">
     <label>Clé Serper (google.serper.dev)</label>
     <input id="i_skey" type="password" placeholder="92903f420cf7c8f0…">
+    <label>PAT Airtable (optionnel — pour bouton 📤 sur cards)</label>
+    <input id="i_atkey" type="password" placeholder="patXXXXXX...">
     <div class="modal-act">
       <button class="btn" onclick="closeSettings()">Annuler</button>
       <button class="btn btn-ac" onclick="saveSettings()">Enregistrer</button>
@@ -283,9 +285,13 @@ body{min-height:100vh}
 // Clés stockées dans localStorage (jamais dans le code source)
 let PKEY=localStorage.getItem('pf_pkey')||'';
 let SKEY=localStorage.getItem('pf_skey')||'';
+let ATKEY=localStorage.getItem('pf_atkey')||''; // Airtable PAT pour push
 const PAPI='https://api.pappers.fr/v2';
 const SAPI='https://google.serper.dev/search';
 const BAPI='https://bodacc-datadila.opendatasoft.com/api/records/1.0/search/';
+const ATAPI='https://api.airtable.com/v0';
+const ATBASE='appWEqRM0HeQh5Qgo';   // Base CRM perso obsidian
+const ATTABLE='tblOg3nc1XdoTlInK'; // Table Prospectflow
 const DATAFILE='prospectflow_data.json';
 const MAX_RESULTS=20; // Cap dur par clic — maitrise du temps de chasse
 
@@ -354,7 +360,7 @@ async function syncFileNow(){
   if(!_fileHandle)return;
   try{
     const w=await _fileHandle.createWritable();
-    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY},prospects:all,history:hist};
+    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY,atkey:ATKEY},prospects:all,history:hist};
     await w.write(JSON.stringify(data,null,2));await w.close();
   }catch(e){_syncStatus='needs-permission';updateSyncBtn()}
 }
@@ -377,7 +383,7 @@ async function restoreFileOnBoot(){
           if(data.ts&&data.ts>localTs+1000){ // marge 1s pour éviter ping-pong
             if(data.prospects)all=data.prospects;
             if(data.history){hist=data.history;saveHist();renderHist()}
-            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY)}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}}
             try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
             filter();toast(`🔄 Sync depuis Drive: ${all.length} prospects`);
           }
@@ -402,7 +408,7 @@ async function reactivateFile(){
           if(data.ts>localTs+1000){
             if(data.prospects)all=data.prospects;
             if(data.history){hist=data.history;saveHist();renderHist()}
-            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY)}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}}
             try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
             filter();
           }
@@ -782,6 +788,7 @@ function render(){
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
+  ${p._pushed?`<span class="btn-sm" style="color:var(--gn);font-weight:700;cursor:default" title="Déjà poussé sur Airtable">✅ AT</span>`:`<button class="btn-sm btn-ghost" onclick="pushAirtable(${i})" title="Pousser ce prospect sur Airtable">📤</button>`}
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
 </div>
 <div class="c-edit" id="edit-${i}" style="display:none">
@@ -875,15 +882,76 @@ function showHist(i){
   toast(`${h.label} — ${vis.length} prospects`);
 }
 
+// ── PUSH AIRTABLE (1 clic par prospect, dédup LinkedIn ou Nom+Prénom+Société) ──
+async function pushAirtable(i){
+  if(!ATKEY){toast('🔑 Configure le PAT Airtable dans ⚙️');openSettings();return}
+  const p=all[i],parts=splitName(p.nom);
+  // Dédup
+  const filters=[];
+  if(p.linkedin)filters.push(`{LinkedIn}="${p.linkedin.replace(/"/g,'\\"')}"`);
+  if(parts.fn&&parts.ln&&p.societe)filters.push(`AND({Prénom}="${parts.fn.replace(/"/g,'\\"')}",{Nom}="${parts.ln.replace(/"/g,'\\"')}",{Société}="${p.societe.replace(/"/g,'\\"')}")`);
+  if(filters.length){
+    const formula=filters.length>1?`OR(${filters.join(',')})`:filters[0];
+    try{
+      const cu=`${ATAPI}/${ATBASE}/${ATTABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1&fields[]=Nom`;
+      const cr=await fetch(cu,{headers:{'Authorization':`Bearer ${ATKEY}`}});
+      if(cr.ok){const cj=await cr.json();if(cj.records&&cj.records.length){p._pushed=true;save();filter();toast(`⏩ ${p.nom} déjà dans Airtable`);return}}
+    }catch(e){}
+  }
+  // Build Infos (synthèse complète)
+  const infos=[];
+  if(p.siren)infos.push(`SIREN: ${p.siren}`);
+  if(p.capital)infos.push(`Capital: ${Number(p.capital).toLocaleString('fr-FR')} €`);
+  if(p.forme)infos.push(`Forme: ${p.forme}`);
+  if(p.date_crea)infos.push(`Création: ${p.date_crea}`);
+  if(p.adr_siege)infos.push(`Siège: ${p.adr_siege}`);
+  if(p.naf_lib||p.naf)infos.push(`NAF: ${p.naf_lib||p.naf}`);
+  if(p.via_pm)infos.push(`Via holding: ${p.via_pm}`);
+  if(p.nb_mandats)infos.push(`Mandats (${p.nb_mandats}): ${p.mandats||''}`);
+  if(p.interests)infos.push(`Intérêts: ${p.interests}`);
+  if(p.parcours)infos.push(`Parcours: ${p.parcours}`);
+  if(p.notes)infos.push(`Notes: ${p.notes}`);
+  const shortSum=`${p.qualite||'Dirigeant'} de ${p.societe}`+(p.capital?` (cap: ${Number(p.capital).toLocaleString('fr-FR')}€)`:'')+(p.nb_mandats?`, ${p.nb_mandats} mandats`:'');
+  // Build fields (le champ Email a un BOM en début, c'est intentionnel côté Airtable)
+  const fields={
+    'Nom':parts.ln||'',
+    'Prénom':parts.fn||'',
+    'LinkedIn':p.linkedin||'',
+    'Société':p.societe||'',
+    'Poste':p.qualite||'',
+    'Anniversaire':p.naissance||'',
+    "Date d'ajout":new Date().toISOString().slice(0,10),
+    'Origine':'Linkedin',
+    'Statut':'Prospect',
+    'Prochaine etape':'Premier contact',
+    'Infos':infos.join('\n'),
+    'Short summary':shortSum,
+  };
+  if(p.email)fields['﻿Email']=p.email;
+  if(p.tel)fields['Téléphone']=p.tel;
+  // POST
+  try{
+    const r=await fetch(`${ATAPI}/${ATBASE}/${ATTABLE}`,{
+      method:'POST',
+      headers:{'Authorization':`Bearer ${ATKEY}`,'Content-Type':'application/json'},
+      body:JSON.stringify({fields,typecast:true})
+    });
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${r.status}`)}
+    p._pushed=true;save();filter();toast(`✅ ${p.nom} push Airtable OK`);
+  }catch(e){toast(`❌ Push échoué: ${e.message}`)}
+}
+
 // ── SETTINGS (clés API) ──
-function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
+function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('i_atkey').value=ATKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
 function closeSettings(){$('modalBg').classList.remove('on')}
 function saveSettings(){
-  const pk=$('i_pkey').value.trim(),sk=$('i_skey').value.trim();
-  if(!pk||!sk){toast('❌ Les 2 clés sont requises');return}
-  PKEY=pk;SKEY=sk;localStorage.setItem('pf_pkey',pk);localStorage.setItem('pf_skey',sk);
+  const pk=$('i_pkey').value.trim(),sk=$('i_skey').value.trim(),at=$('i_atkey').value.trim();
+  if(!pk||!sk){toast('❌ Pappers et Serper requis');return}
+  PKEY=pk;SKEY=sk;ATKEY=at;
+  localStorage.setItem('pf_pkey',pk);localStorage.setItem('pf_skey',sk);
+  if(at)localStorage.setItem('pf_atkey',at);else localStorage.removeItem('pf_atkey');
   closeSettings();toast('✓ Clés enregistrées');
-  if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{}); // sync clés vers Drive
+  if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{});
 }
 function checkKeys(){if(!PKEY||!SKEY){openSettings();return false}return true}
 
