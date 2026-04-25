@@ -517,19 +517,19 @@ async function serper(q,num=10){
 // Normalisation accents pour matching robuste (Sébastien → sebastien, Crémant → cremant)
 function noAccent(s){return(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()}
 
-// ── LINKEDIN MULTI-QUERY (2-3 recherches Serper, garde le meilleur match) ──
+// ── LINKEDIN AUTO (1 query Serper par défaut, 2e seulement si fail → économie crédits) ──
 async function findLinkedIn(p,ville){
   const co=p._bestCo||p.societe||'';
-  const queries=[
-    `site:linkedin.com/in "${p.nom}" ${co}`,
-    `site:linkedin.com/in "${p.nom}" ${ville} ${shortF(p.forme||'')}`,
-  ];
+  // Query 1 : nom + société (la plus efficace en général)
+  let li=await serper(`site:linkedin.com/in "${p.nom}" ${co}`,10).catch(()=>[]);
+  let cands=(li||[]).filter(r=>/linkedin\.com\/in\//.test(r.link)&&!/\/company\//.test(r.link));
   let best=null,bs=0;
-  for(const q of queries){
-    const li=await serper(q,10).catch(()=>[]);
-    const cands=(li||[]).filter(r=>/linkedin\.com\/in\//.test(r.link)&&!/\/company\//.test(r.link));
+  for(const c of cands){const sc=matchScoreLI(p,c.title,c.snippet,ville,c.link);if(sc>bs){bs=sc;best=c}}
+  // Query 2 : nom + ville + forme — UNIQUEMENT si Q1 a flop
+  if(bs<55&&ville){
+    li=await serper(`site:linkedin.com/in "${p.nom}" ${ville} ${shortF(p.forme||'')}`,10).catch(()=>[]);
+    cands=(li||[]).filter(r=>/linkedin\.com\/in\//.test(r.link)&&!/\/company\//.test(r.link));
     for(const c of cands){const sc=matchScoreLI(p,c.title,c.snippet,ville,c.link);if(sc>bs){bs=sc;best=c}}
-    if(bs>=80)break; // si on a un excellent match, pas besoin de la 2e query
   }
   if(best&&bs>=55){p.linkedin=best.link;p._liScore=bs}
 }
@@ -695,11 +695,8 @@ async function run(){
       g.innerHTML=ldr(`3/4 — LinkedIn…`,55);
       for(let i=0;i<toE.length;i++){
         const p=toE[i],ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';
-        try{
-          if(!p.linkedin){await findLinkedIn(p,ville)}
-          // Auto-scan intérêts si LinkedIn trouvé
-          if(p.linkedin&&!p.interests)await enrichInterests(p,ville);
-        }catch(e){}
+        try{if(!p.linkedin)await findLinkedIn(p,ville)}catch(e){}
+        // PAS de scan intérêts auto (économie crédits) — utiliser bouton 🎯 sur la card si voulu
         g.innerHTML=ldr(`3/4 — LinkedIn ${i+1}/${toE.length}…`,55+Math.round((i/toE.length)*25));
       }
       toE.forEach(p=>p._done=true);
@@ -745,7 +742,8 @@ function render(){
     const birth=[p.naissance,p.ville_naissance,p.pays_naissance].filter(Boolean).join(' — ');
     const via=p.via_pm?` <span style="font:600 9px Inter;color:var(--am)">via ${esc(p.via_pm)}</span>`:'';
     const conf=p._liScore?`<span class="conf ${p._liScore>=70?'conf-hi':p._liScore>=40?'conf-mid':'conf-lo'}">🎯${p._liScore}%</span>`:'';
-    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:'<span class="nc">—</span>';
+    const liQuery=encodeURIComponent(`site:linkedin.com/in "${p.nom}" ${p._bestCo||p.societe||''}`);
+    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:`<a href="https://www.google.com/search?q=${liQuery}" target="_blank" style="color:var(--ac);font-weight:600" title="Chercher sur Google (gratos), copie l'URL puis colle-la dans ✏️">🔍 Chercher</a>`;
     const pappersUrl=`https://www.pappers.fr/entreprise/${p.siren}`;
     const webH=p.website?`<a href="https://${esc(p.website)}" target="_blank">${esc(p.website)}</a>`:'';
 
