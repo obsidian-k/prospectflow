@@ -176,8 +176,9 @@ body{min-height:100vh}
       <div class="badge-api" id="bp"><i></i>Pappers <span id="bp-c"></span></div>
       <div class="badge-api" id="bs"><i></i>Serper <span id="bs-c"></span></div>
       <div class="badge-api"><i></i>BODACC ∞</div>
-      <button class="btn" onclick="exportData()" title="Exporter données (changer de PC)">💾</button>
-      <button class="btn" onclick="importData()" title="Importer données JSON">📂</button>
+      <button class="btn" id="syncBtn" onclick="syncBtnClick()" title="Auto-save Drive">🔗 Lier Drive</button>
+      <button class="btn" onclick="exportData()" title="Export JSON manuel (one-shot)">💾</button>
+      <button class="btn" onclick="importData()" title="Import JSON manuel">📂</button>
       <button class="btn" onclick="clearAll()" title="Réinitialiser">🗑️</button>
       <button class="btn" onclick="openSettings()" title="Configurer les clés API">⚙️</button>
       <button class="btn" onclick="exportExcel()"><svg viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>Excel</button>
@@ -292,9 +293,133 @@ let all=[],vis=[],pF='',currentPage=1,perPage=MAX_RESULTS,lastTotal=0;
 const credits={pappers:0,serper:null};
 const $=id=>document.getElementById(id);
 
-// ── PERSISTENCE: localStorage + auto-save JSON file on Drive ──
-function save(){try{localStorage.setItem('pf5',JSON.stringify(all))}catch(e){}}
+// ── PERSISTENCE: localStorage + auto-save fichier Drive (File System Access API) ──
+function save(){
+  try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(Date.now()))}catch(e){}
+  if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{});
+}
 function load(){try{const d=localStorage.getItem('pf5');if(d)all=JSON.parse(d)}catch(e){}}
+
+// ── DRIVE AUTO-SAVE (file picker once, ensuite tout est synchro auto) ──
+let _fileHandle=null,_syncStatus='unlinked'; // 'unlinked' | 'needs-permission' | 'linked'
+
+// IndexedDB minimal pour persister le FileSystemFileHandle entre sessions
+function idbOpen(){return new Promise((res,rej)=>{const r=indexedDB.open('pf',1);r.onupgradeneeded=()=>r.result.createObjectStore('s');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function idbSet(k,v){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction('s','readwrite');tx.objectStore('s').put(v,k);tx.oncomplete=()=>{db.close();res()};tx.onerror=()=>{db.close();rej(tx.error)}})}
+async function idbGet(k){const db=await idbOpen();return new Promise((res,rej)=>{const tx=db.transaction('s','readonly');const g=tx.objectStore('s').get(k);g.onsuccess=()=>{db.close();res(g.result)};g.onerror=()=>{db.close();rej(g.error)}})}
+
+function updateSyncBtn(){
+  const b=$('syncBtn');if(!b)return;
+  if(_syncStatus==='linked'){b.textContent='🔗 Sync ON';b.style.borderColor='var(--gn)';b.style.color='var(--gn)';b.title='Cliquer pour délier'}
+  else if(_syncStatus==='needs-permission'){b.textContent='🔓 Activer';b.style.borderColor='var(--am)';b.style.color='var(--am)';b.title='Cliquer pour ré-autoriser l\'accès au fichier'}
+  else{b.textContent='🔗 Lier Drive';b.style.borderColor='';b.style.color='';b.title='Lier un fichier auto-save (Drive)'}
+}
+
+function syncBtnClick(){
+  if(_syncStatus==='linked')unlinkFile();
+  else if(_syncStatus==='needs-permission')reactivateFile();
+  else linkFile();
+}
+
+async function linkFile(){
+  if(!('showSaveFilePicker'in window)){toast('❌ Navigateur incompatible (utilise Chrome ou Edge)');return}
+  try{
+    const handle=await window.showSaveFilePicker({suggestedName:'prospectflow_data.json',types:[{description:'ProspectFlow data',accept:{'application/json':['.json']}}]});
+    const perm=await handle.requestPermission({mode:'readwrite'});
+    if(perm!=='granted'){toast('Permission refusée');return}
+    // Si fichier existant avec données → propose de charger
+    let existing=null;
+    try{const f=await handle.getFile();if(f.size>0)existing=JSON.parse(await f.text())}catch(e){}
+    if(existing&&(existing.prospects||existing.keys)){
+      const msg=`Fichier détecté:\n• ${(existing.prospects||[]).length} prospects\n• ${(existing.history||[]).length} recherches en historique\n• Clés API: ${existing.keys?'oui':'non'}\n\nCharger ce contenu (remplace la base actuelle) ?`;
+      if(confirm(msg)){
+        if(existing.prospects)all=existing.prospects;
+        if(existing.history){hist=existing.history;saveHist();renderHist()}
+        if(existing.keys&&existing.keys.pkey&&existing.keys.skey){
+          PKEY=existing.keys.pkey;SKEY=existing.keys.skey;
+          localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);
+          closeSettings();
+        }
+        save();filter();
+      }
+    }
+    _fileHandle=handle;_syncStatus='linked';updateSyncBtn();
+    await idbSet('pf_fh',handle);
+    await syncFileNow();
+    toast('🔗 Drive lié — auto-save activé (clés + base + historique)');
+  }catch(e){if(e.name!=='AbortError')toast('Erreur: '+e.message)}
+}
+
+async function syncFileNow(){
+  if(!_fileHandle)return;
+  try{
+    const w=await _fileHandle.createWritable();
+    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY},prospects:all,history:hist};
+    await w.write(JSON.stringify(data,null,2));await w.close();
+  }catch(e){_syncStatus='needs-permission';updateSyncBtn()}
+}
+
+async function restoreFileOnBoot(){
+  if(!('showSaveFilePicker'in window))return;
+  try{
+    const handle=await idbGet('pf_fh');
+    if(!handle)return;
+    _fileHandle=handle;
+    const perm=await handle.queryPermission({mode:'readwrite'});
+    if(perm==='granted'){
+      _syncStatus='linked';updateSyncBtn();
+      // Charger fichier si plus récent que localStorage (sync inter-PC via Drive)
+      try{
+        const f=await handle.getFile();
+        if(f.size>0){
+          const data=JSON.parse(await f.text());
+          const localTs=parseInt(localStorage.getItem('pf_savedTs'))||0;
+          if(data.ts&&data.ts>localTs+1000){ // marge 1s pour éviter ping-pong
+            if(data.prospects)all=data.prospects;
+            if(data.history){hist=data.history;saveHist();renderHist()}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY)}
+            try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
+            filter();toast(`🔄 Sync depuis Drive: ${all.length} prospects`);
+          }
+        }
+      }catch(e){}
+    }else{_syncStatus='needs-permission';updateSyncBtn()}
+  }catch(e){}
+}
+
+async function reactivateFile(){
+  if(!_fileHandle)return;
+  try{
+    const perm=await _fileHandle.requestPermission({mode:'readwrite'});
+    if(perm==='granted'){
+      _syncStatus='linked';updateSyncBtn();
+      // Re-load au cas où un autre PC aurait modifié
+      try{
+        const f=await _fileHandle.getFile();
+        if(f.size>0){
+          const data=JSON.parse(await f.text());
+          const localTs=parseInt(localStorage.getItem('pf_savedTs'))||0;
+          if(data.ts>localTs+1000){
+            if(data.prospects)all=data.prospects;
+            if(data.history){hist=data.history;saveHist();renderHist()}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY)}
+            try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
+            filter();
+          }
+        }
+      }catch(e){}
+      await syncFileNow();
+      toast('🔓 Auto-save réactivé');
+    }
+  }catch(e){toast('Permission refusée')}
+}
+
+function unlinkFile(){
+  if(!confirm('Délier le fichier auto-save ? (Le fichier reste sur le Drive, juste plus de sync auto.)'))return;
+  _fileHandle=null;_syncStatus='unlinked';updateSyncBtn();
+  idbSet('pf_fh',null).catch(()=>{});
+  toast('Délié');
+}
 // Export data (pour changer de PC)
 function exportData(){
   const data={prospects:all,history:hist,v:'pf5',ts:Date.now()};
@@ -625,7 +750,7 @@ function exportExcel(){
 // ── HISTORY ──
 let hist=[];
 function loadHist(){try{const d=localStorage.getItem('pf5_hist');if(d)hist=JSON.parse(d)}catch(e){}}
-function saveHist(){try{localStorage.setItem('pf5_hist',JSON.stringify(hist))}catch(e){}}
+function saveHist(){try{localStorage.setItem('pf5_hist',JSON.stringify(hist))}catch(e){}; if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{})}
 function addHist(count,prospects){
   const params={naf:$('s_naf').value,dept:$('s_dept').value,cp:$('s_cp').value,dmin:$('s_dmin').value,dmax:$('s_dmax').value,cmin:$('s_cmin').value,cmax:$('s_cmax').value,formes:[...document.querySelectorAll('#chips .chip.on')].map(c=>c.dataset.v)};
   const label=[params.naf,params.dept?'Dép.'+params.dept:'',params.cp||'',params.cmin?params.cmin+'€+':''].filter(Boolean).join(' · ')||'Libre';
@@ -656,6 +781,7 @@ function saveSettings(){
   if(!pk||!sk){toast('❌ Les 2 clés sont requises');return}
   PKEY=pk;SKEY=sk;localStorage.setItem('pf_pkey',pk);localStorage.setItem('pf_skey',sk);
   closeSettings();toast('✓ Clés enregistrées');
+  if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{}); // sync clés vers Drive
 }
 function checkKeys(){if(!PKEY||!SKEY){openSettings();return false}return true}
 
@@ -663,8 +789,9 @@ function checkKeys(){if(!PKEY||!SKEY){openSettings();return false}return true}
 const _run=run;run=async function(){if(!checkKeys()){toast('Configure tes clés API d\'abord');return}return _run()};
 
 // ── INIT ──
-load();loadHist();renderHist();filter();
-if(!PKEY||!SKEY)openSettings();
+load();loadHist();renderHist();filter();updateSyncBtn();
+// Tente de restaurer le lien Drive (asynchrone) PUIS demande les clés si toujours manquantes
+restoreFileOnBoot().finally(()=>{if(!PKEY||!SKEY)openSettings()});
 </script>
 </body>
 </html>
