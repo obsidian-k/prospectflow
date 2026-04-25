@@ -147,21 +147,6 @@ body{min-height:100vh}
 .toast{position:fixed;bottom:16px;right:16px;background:var(--sf2);border:1px solid var(--bd);border-radius:var(--r);padding:10px 16px;font:600 11px Inter;color:var(--tx);box-shadow:0 6px 24px rgba(0,0,0,.35);z-index:300;display:flex;align-items:center;gap:6px;animation:su .25s ease}
 @keyframes su{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
-/* Preview pré-enrichissement (économie crédits Pappers) */
-.preview-box{display:flex;flex-direction:column;gap:10px}
-.preview-head{padding:14px 16px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r)}
-.preview-head h3{font:800 13px Inter;margin-bottom:4px}
-.preview-head p{font:500 11px Inter;color:var(--tx2)}
-.preview-act{display:flex;align-items:center;gap:8px;padding:4px 0}
-.preview-list{display:flex;flex-direction:column;gap:2px;max-height:60vh;overflow-y:auto;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);padding:6px}
-.preview-row{display:grid;grid-template-columns:24px 1fr 1.4fr 110px 90px;gap:10px;align-items:center;padding:7px 10px;border-radius:6px;cursor:pointer;font:500 11px Inter}
-.preview-row:hover{background:var(--sf2)}
-.preview-row input{width:14px;height:14px;cursor:pointer;accent-color:var(--ac)}
-.prv-nom{font-weight:700;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.prv-meta{color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
-.prv-cap{font-weight:700;color:var(--ac);text-align:right;font-size:11px}
-.prv-siren{font-family:monospace;color:var(--tx3);font-size:10px;text-align:right}
-
 /* Settings modal */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:500;backdrop-filter:blur(4px)}
 .modal-bg.on{display:flex}
@@ -193,8 +178,6 @@ body{min-height:100vh}
       <div class="badge-api"><i></i>BODACC ∞</div>
       <button class="btn" onclick="exportData()" title="Exporter données (changer de PC)">💾</button>
       <button class="btn" onclick="importData()" title="Importer données JSON">📂</button>
-      <button class="btn" onclick="importXLSX()" title="Importer tableur XLSX/CSV (bypass Pappers)">📥</button>
-      <button class="btn" onclick="reEnrichLinkedIn()" title="Re-chercher LinkedIn pour les prospects sans">🔄</button>
       <button class="btn" onclick="clearAll()" title="Réinitialiser">🗑️</button>
       <button class="btn" onclick="openSettings()" title="Configurer les clés API">⚙️</button>
       <button class="btn" onclick="exportExcel()"><svg viewBox="0 0 16 16"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>Excel</button>
@@ -206,9 +189,7 @@ body{min-height:100vh}
       <div class="sb-t">Recherche</div>
       <div class="f"><label>Cible</label>
         <select id="s_preset" onchange="applyPreset()">
-          <option value="">Recherche libre</option>
-          <option value="holding" selected>Holdings (6420Z)</option>
-          <option value="creation">Créations récentes</option>
+          <option value="holding" selected>Création de holdings (6420Z)</option>
           <option value="cession">Cessions d'entreprise (BODACC)</option>
         </select>
       </div>
@@ -308,7 +289,6 @@ const DATAFILE='prospectflow_data.json';
 const MAX_RESULTS=20; // Cap dur par clic — maitrise du temps de chasse
 
 let all=[],vis=[],pF='',currentPage=1,perPage=MAX_RESULTS,lastTotal=0;
-let _previewData=null; // {items, isCession, cmin, cmax} pendant la phase preview
 const credits={pappers:0,serper:null};
 const $=id=>document.getElementById(id);
 
@@ -321,17 +301,7 @@ function exportData(){
   const blob=new Blob([JSON.stringify(data)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='prospectflow_data.json';a.click();URL.revokeObjectURL(a.href);
-  localStorage.setItem('pf_lastBackup',String(Date.now()));
   toast('💾 Données exportées');
-}
-// Reminder discret si dernière sauvegarde > 7j ET il y a des prospects à risque
-function backupReminder(){
-  if(!all.length)return;
-  const last=parseInt(localStorage.getItem('pf_lastBackup'))||0;
-  const days=Math.floor((Date.now()-last)/(24*3600*1000));
-  if(last===0||days>=7){
-    setTimeout(()=>toast(`⚠️ Pense à sauvegarder ta base (${all.length} prospects, dernière sauvegarde ${last?`il y a ${days}j`:'jamais'}). Bouton 💾 dans la topbar.`),1500);
-  }
 }
 // Import data (sur un nouveau PC)
 function importData(){
@@ -386,7 +356,7 @@ function esc(s){return s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'
 function inits(n){return(n||'??').split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase()}
 function shortF(f){if(!f)return'';const m=f.match(/^(SAS|SASU|SARL|EURL|SA\b|SCA|SCI)/i);return m?m[1].toUpperCase():f.split(',')[0].slice(0,10)}
 function tog(e){e.classList.toggle('on')}
-function applyPreset(){const v=$('s_preset').value;if(v==='holding')$('s_naf').value='6420Z';if(v==='creation'){$('s_naf').value='';const d=new Date();d.setMonth(d.getMonth()-3);$('s_dmin').value=d.toISOString().slice(0,10)}if(v==='cession'){$('s_naf').value='';if(!$('s_cmin').value)$('s_cmin').value='100000'}}
+function applyPreset(){const v=$('s_preset').value;if(v==='holding')$('s_naf').value='6420Z';if(v==='cession'){$('s_naf').value='';if(!$('s_cmin').value)$('s_cmin').value='100000'}}
 function loadMore(){currentPage++;run()}
 function updateMoreBtn(){const mb=$('moreBtn');if(lastTotal>currentPage*perPage){mb.style.display='flex';mb.textContent=`Page ${currentPage+1} (${lastTotal} total)`}else mb.style.display='none'}
 
@@ -432,9 +402,10 @@ function mkP(co,dir,q){
 
 // ═══════════════════════════════════════
 // PIPELINE — 4 étapes, cap dur MAX_RESULTS par clic
-// 1. Source (Pappers OU BODACC) → preview items
-// 2. PREVIEW : user sélectionne ce qu'il veut enrichir (économie crédits Pappers)
-// 3. enrichSirens → /entreprise + dirigeants + mandats + LinkedIn + BODACC events
+// 1. Source (Pappers Holdings OU BODACC Cessions) → SIRENs
+// 2. /entreprise → dirigeants (cache 30j invisible)
+// 3. Mandats + LinkedIn (matching strict, seuil 60)
+// 4. BODACC events
 // ═══════════════════════════════════════
 async function run(){
   const btn=$('goBtn'),g=$('grid');btn.disabled=true;
@@ -446,10 +417,10 @@ async function run(){
     const v=k=>$(k).value.trim();
     const cmin=parseInt(v('s_cmin'))||0,cmax=parseInt(v('s_cmax'))||0;
 
-    // ── 1. SOURCE → preview items (siren + meta légère, AUCUN /entreprise call) ──
-    let items=[];
+    // ── 1. SOURCE → SIRENs ──
+    let sirens=[];
     if(isCession){
-      g.innerHTML=ldr('Recherche BODACC cessions…',10);
+      g.innerHTML=ldr('1/4 — BODACC cessions…',5);
       const bp=new URLSearchParams({dataset:'annonces-commerciales',rows:String(MAX_RESULTS*4),sort:'-dateparution'});
       bp.append('refine.familleavis_lib','Ventes et cessions');
       if(v('s_dept'))bp.append('refine.departement',v('s_dept'));
@@ -461,65 +432,26 @@ async function run(){
         const f=rec.fields||{};
         const raw=JSON.stringify(f.registre||'')+' '+JSON.stringify(f.listepersonnes||'');
         const m=raw.match(/\b(\d{9})\b/);
-        if(m&&!seen.has(m[1])){seen.add(m[1]);items.push({siren:m[1],nom:f.commercant||'',ville:f.ville||'',cp:f.cp||'',date:f.dateparution||'',capital:null,naf:'(à enrichir)'})}
+        if(m&&!seen.has(m[1])){seen.add(m[1]);sirens.push(m[1])}
       }
     } else {
-      g.innerHTML=ldr('Recherche Pappers…',10);
+      g.innerHTML=ldr('1/4 — Pappers…',5);
       const formes=[...document.querySelectorAll('#chips .chip.on')].map(c=>c.dataset.v);
       const p=new URLSearchParams({api_token:PKEY,par_page:String(MAX_RESULTS),page:String(currentPage),entreprise_cessee:'false'});
       if(v('s_naf'))p.set('code_naf',v('s_naf'));if(v('s_dept'))p.set('departement',v('s_dept'));
       if(v('s_cp'))p.set('code_postal',v('s_cp'));if(v('s_dmin'))p.set('date_creation_min',dmy(v('s_dmin')));
       if(v('s_dmax'))p.set('date_creation_max',dmy(v('s_dmax')));if(cmin)p.set('capital_min',String(cmin));
       if(cmax)p.set('capital_max',String(cmax));
-      for(const f of formes)p.append('categorie_juridique',f);
+      // FIX HTTP 500: Pappers attend categorie_juridique séparé par virgules (pas répété)
+      if(formes.length)p.set('categorie_juridique',formes.join(','));
       const r=await ft(`${PAPI}/recherche?${p}`);
       if(r.total)lastTotal=r.total;
-      items=(r.resultats||[]).map(rr=>({siren:rr.siren,nom:rr.nom_entreprise||rr.denomination||'',capital:rr.capital||0,forme:rr.forme_juridique||'',ville:(rr.siege&&rr.siege.ville)||'',naf:rr.libelle_code_naf||rr.code_naf||''}));
+      sirens=(r.resultats||[]).map(rr=>rr.siren);
     }
-    if(!items.length){g.innerHTML='<div class="empty"><h3>Aucun résultat</h3><p>Élargissez vos critères.</p></div>';return}
+    if(!sirens.length){g.innerHTML='<div class="empty"><h3>Aucun résultat</h3><p>Élargissez vos critères.</p></div>';return}
 
-    // ── 2. PREVIEW : décoche avant de payer les /entreprise calls ──
-    _previewData={items,isCession,cmin,cmax};
-    renderPreview();
-  }catch(e){g.innerHTML=`<div class="empty"><h3>Erreur</h3><p>${esc(e.message)}</p></div>`}finally{btn.disabled=false}
-}
-
-function renderPreview(){
-  const data=_previewData;if(!data)return;
-  const rows=data.items.map((it,i)=>{
-    const cap=it.capital?`${(it.capital).toLocaleString('fr-FR')} €`:'<span style="color:var(--tx3)">—</span>';
-    const meta=data.isCession?`${esc(it.cp||'')} ${esc(it.ville||'')} · ${esc(it.date||'')}`:`${esc(it.ville||'')} · ${esc(it.naf||'')}`;
-    return`<label class="preview-row"><input type="checkbox" data-i="${i}" checked><span class="prv-nom">${esc(it.nom||'(nom inconnu)')}</span><span class="prv-meta">${meta}</span><span class="prv-cap">${cap}</span><span class="prv-siren">${esc(it.siren)}</span></label>`;
-  }).join('');
-  $('grid').innerHTML=`<div class="preview-box">
-    <div class="preview-head"><h3>📋 ${data.items.length} sociétés trouvées</h3><p>Décoche celles qui ne t'intéressent pas <b>avant</b> l'enrichissement (économie crédits Pappers).</p></div>
-    <div class="preview-act">
-      <button class="btn btn-sm" onclick="togAll(true)">Tout cocher</button>
-      <button class="btn btn-sm" onclick="togAll(false)">Tout décocher</button>
-      <span style="margin-left:auto;color:var(--tx3);font:600 10px Inter">~0.5 crédit Pappers / société sélectionnée</span>
-    </div>
-    <div class="preview-list">${rows}</div>
-    <div class="preview-act">
-      <button class="btn" onclick="cancelPreview()">Annuler</button>
-      <button class="btn btn-ac" onclick="confirmPreview()" style="margin-left:auto">Enrichir les sélectionnés →</button>
-    </div>
-  </div>`;
-}
-function togAll(s){document.querySelectorAll('.preview-list input[type=checkbox]').forEach(cb=>cb.checked=s)}
-function cancelPreview(){_previewData=null;filter();toast('Recherche annulée — aucun crédit dépensé')}
-async function confirmPreview(){
-  const data=_previewData;if(!data)return;
-  const checked=[...document.querySelectorAll('.preview-list input[type=checkbox]:checked')].map(cb=>data.items[+cb.dataset.i].siren);
-  _previewData=null;
-  if(!checked.length){filter();return}
-  await enrichSirens(checked,data.isCession,data.cmin,data.cmax);
-}
-
-async function enrichSirens(sirens,isCession,cmin,cmax){
-  const btn=$('goBtn'),g=$('grid');btn.disabled=true;
-  try{
-    // ── DÉTAILS PAPPERS + EXTRACTION DIRIGEANTS ──
-    g.innerHTML=ldr(`Détails (${sirens.length} SIREN)…`,15);
+    // ── 2. DÉTAILS + DIRIGEANTS ──
+    g.innerHTML=ldr(`2/4 — Détails (${sirens.length} SIREN)…`,15);
     const newP=[];let kept=0;
     for(let i=0;i<sirens.length;i++){
       if(kept>=MAX_RESULTS)break;
@@ -537,7 +469,7 @@ async function enrichSirens(sirens,isCession,cmin,cmax){
         for(const b of benes){if(b.nom&&b.prenom){const via=pmB?`via ${pmB.denomination||pmB.nom_complet}`:'BE';newP.push(mkP(d,{nom:b.nom,prenom:b.prenom,prenom_usuel:b.prenom_usuel||b.prenom,sexe:b.sexe||'',date_de_naissance_formate:b.date_de_naissance_complete_formatee||'',ville_de_naissance:b.ville_de_naissance||'',pays_de_naissance:b.pays_de_naissance||'',adresse_ligne_1:b.adresse_ligne_1||'',code_postal:b.code_postal||'',ville:b.ville||'',qualite:`Bénéficiaire effectif (${b.pourcentage_parts||'?'}%)`,personne_morale:false},`Bénéficiaire — ${via}`));found=true}}
         if(!found&&pmB&&pmB.siren){try{const pm=await ftEntreprise(pmB.siren).catch(()=>null);if(pm){for(const dir of(pm.representants||[]).filter(r=>!r.personne_morale&&/(président|gérant)/i.test(r.qualite||''))){const p=mkP(d,dir,`${(dir.qualites||[dir.qualite]).join(', ')} — via ${pmB.denomination||pmB.nom_complet}`);p.via_pm=pmB.denomination||pmB.nom_complet;newP.push(p)}}}catch(e){}}
       }
-      g.innerHTML=ldr(`Détails ${kept}/${sirens.length}…`,15+Math.round((i/sirens.length)*20));
+      g.innerHTML=ldr(`2/4 — ${kept}/${MAX_RESULTS} retenues…`,15+Math.round((i/sirens.length)*20));
     }
     if(!newP.length){g.innerHTML='<div class="empty"><h3>Aucun dirigeant identifiable</h3><p>Aucune entreprise ne matche vos critères.</p></div>';return}
 
@@ -545,16 +477,17 @@ async function enrichSirens(sirens,isCession,cmin,cmax){
     for(const p of newP){if(!keys.has(p._k)){all.push(p);keys.add(p._k);added++}}
     const toE=all.filter(p=>!p._done&&p.nom);
 
+    // ── 3. MANDATS + LINKEDIN ──
     if(toE.length){
-      g.innerHTML=ldr(`Mandats…`,40);
+      g.innerHTML=ldr(`3/4 — Mandats…`,40);
       for(let i=0;i<toE.length;i++){
         const p=toE[i];try{const parts=splitName(p.nom);
           const dr=await ftMandats(parts.fn,parts.ln).catch(()=>null);
           if(dr&&dr.resultats){let tot=0;const names=[];for(const r of dr.resultats){tot+=r.nb_entreprises_total||0;for(const e of(r.entreprises||[])){if(e.dirigeant_actuel)names.push(e.nom_entreprise);if(!p._bestCo&&e.dirigeant_actuel&&!e.entreprise_cessee&&e.effectif_max>0&&!/SCI|holding/i.test(e.nom_entreprise)){p._bestCo=e.nom_entreprise;p._bestCoSiren=e.siren}}}
           p.nb_mandats=tot;p.mandats=[...new Set(names)].filter(n=>n.toUpperCase()!==p.societe.toUpperCase()).slice(0,5).join(', ')}}catch(e){}
-        g.innerHTML=ldr(`Mandats ${i+1}/${toE.length}…`,40+Math.round((i/toE.length)*15));
+        g.innerHTML=ldr(`3/4 — Mandats ${i+1}/${toE.length}…`,40+Math.round((i/toE.length)*15));
       }
-      g.innerHTML=ldr(`LinkedIn (matching strict)…`,55);
+      g.innerHTML=ldr(`3/4 — LinkedIn…`,55);
       for(let i=0;i<toE.length;i++){
         const p=toE[i],ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';
         try{
@@ -567,12 +500,13 @@ async function enrichSirens(sirens,isCession,cmin,cmax){
             if(best&&bs>=60){p.linkedin=best.link;p._liScore=bs}
           }
         }catch(e){}
-        g.innerHTML=ldr(`LinkedIn ${i+1}/${toE.length}…`,55+Math.round((i/toE.length)*25));
+        g.innerHTML=ldr(`3/4 — LinkedIn ${i+1}/${toE.length}…`,55+Math.round((i/toE.length)*25));
       }
       toE.forEach(p=>p._done=true);
     }
 
-    g.innerHTML=ldr('BODACC events…',85);
+    // ── 4. BODACC events ──
+    g.innerHTML=ldr('4/4 — BODACC events…',85);
     const allSirens=[...new Set(all.map(p=>p.siren))];
     for(const bc of chunk(allSirens,10)){
       const results=await Promise.all(bc.map(s=>fetch(`${BAPI}?dataset=annonces-commerciales&q=${s}&sort=-dateparution&rows=3`).then(r=>r.json()).catch(()=>({records:[]}))));
@@ -611,7 +545,7 @@ function render(){
     const birth=[p.naissance,p.ville_naissance,p.pays_naissance].filter(Boolean).join(' — ');
     const via=p.via_pm?` <span style="font:600 9px Inter;color:var(--am)">via ${esc(p.via_pm)}</span>`:'';
     const conf=p._liScore?`<span class="conf ${p._liScore>=70?'conf-hi':p._liScore>=40?'conf-mid':'conf-lo'}">🎯${p._liScore}%</span>`:'';
-    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:`<span class="nc">—</span> <a href="javascript:void(0)" onclick="manualLinkedIn(${i})" style="font:600 9px Inter;color:var(--ac);text-decoration:none" title="Chercher sur Google">🔍 Chercher</a>`;
+    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:'<span class="nc">—</span>';
     const pappersUrl=`https://www.pappers.fr/entreprise/${p.siren}`;
     const webH=p.website?`<a href="https://${esc(p.website)}" target="_blank">${esc(p.website)}</a>`:'';
 
@@ -714,117 +648,6 @@ function showHist(i){
   toast(`${h.label} — ${vis.length} prospects`);
 }
 
-// ── IMPORT XLSX/CSV (bypass Pappers si données présentes) ──
-// Smart column mapping: detect colonnes par regex insensible à casse/accents
-const COLMAP={
-  siren:/^(siren|n°?\s*siren|numero\s*siren)$/i,
-  nom:/^(nom|d[ée]nomination|raison\s*sociale|soci[ée]t[ée]|entreprise|nom\s*de\s*l['']entreprise)$/i,
-  dirigeant:/^(dirigeant|repr[ée]sentant|nom\s*dirigeant|dirigeant\s*principal|g[ée]rant|pr[ée]sident)$/i,
-  forme:/^(forme|forme\s*juridique|cat[ée]gorie\s*juridique)$/i,
-  capital:/^(capital|capital\s*\(?€?\)?|capital\s*social)$/i,
-  adresse:/^(adresse|adresse\s*si[èe]ge|si[èe]ge|si[èe]ge\s*social)$/i,
-  date_crea:/^(date\s*de?\s*cr[ée]ation|date\s*cr[ée]ation|cr[ée]ation)$/i,
-  naf:/^(naf|code\s*naf|secteur|activit[ée])$/i,
-  ville:/^(ville|commune)$/i,
-  cp:/^(cp|code\s*postal)$/i,
-  notes:/^(signal\s*patrimonial|angle\s*d'?approche\s*recommand[ée]?|notes?|commentaires?)$/i
-};
-function detectCols(headers){
-  const map={};
-  for(const h of headers){const hc=String(h||'').trim();for(const[k,rx]of Object.entries(COLMAP)){if(rx.test(hc)){map[k]=h;break}}}
-  return map;
-}
-function importXLSX(){
-  if(!checkKeys()){toast('Configure tes clés API d\'abord');return}
-  const inp=document.createElement('input');inp.type='file';inp.accept='.xlsx,.xls,.csv';
-  inp.onchange=async e=>{
-    const f=e.target.files[0];if(!f)return;
-    const buf=await f.arrayBuffer();
-    const wb=XLSX.read(buf,{type:'array'});
-    const sh=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(sh,{defval:''});
-    if(!rows.length){toast('❌ Tableur vide');return}
-    const cols=detectCols(Object.keys(rows[0]));
-    if(!cols.siren&&!cols.dirigeant){toast('❌ Aucune colonne SIREN ou Dirigeant détectée');return}
-    // Filtre selon critères sidebar (NAF, dept, capital min/max)
-    const v=k=>$(k).value.trim();
-    const fNaf=v('s_naf').toLowerCase(),fDept=v('s_dept'),fCmin=parseInt(v('s_cmin'))||0,fCmax=parseInt(v('s_cmax'))||0;
-    const kept=rows.filter(r=>{
-      if(fNaf&&cols.naf){const naf=String(r[cols.naf]||'').toLowerCase();if(!naf.includes(fNaf))return false}
-      if(fDept&&cols.adresse){const a=String(r[cols.adresse]||'');if(!new RegExp(`\\b${fDept}\\d{3}\\b`).test(a))return false}
-      if(fCmin&&cols.capital){const c=parseFloat(String(r[cols.capital]).replace(/[^\d.,]/g,'').replace(',','.'))||0;if(c<fCmin)return false}
-      if(fCmax&&cols.capital){const c=parseFloat(String(r[cols.capital]).replace(/[^\d.,]/g,'').replace(',','.'))||0;if(c>fCmax)return false}
-      return true;
-    });
-    if(!kept.length){toast(`0 lignes après filtres (sur ${rows.length})`);return}
-    if(!confirm(`${kept.length}/${rows.length} lignes correspondent aux filtres.\n\nImporter ces ${kept.length} prospects et lancer la recherche LinkedIn ?`))return;
-    const newP=[];
-    for(const r of kept){
-      const siren=cols.siren?String(r[cols.siren]||'').replace(/\D/g,'').slice(0,9):'';
-      const dirRaw=cols.dirigeant?String(r[cols.dirigeant]||'').trim():'';
-      if(!dirRaw)continue;
-      // Nettoie noms à virgules type "Olivier, Yves, Marie Dilasser" → "Olivier Dilasser"
-      const dirParts=dirRaw.split(',').map(s=>s.trim()).filter(Boolean);
-      const nom=dirParts.length>1?(dirParts[0]+' '+dirParts[dirParts.length-1]):dirRaw;
-      const adr=cols.adresse?String(r[cols.adresse]||''):'';
-      const naf=cols.naf?String(r[cols.naf]||''):'';
-      const p={
-        _k:`${siren||'NOSIREN'}_${nom}`,nom,qualite:cols.dirigeant?'Dirigeant (import)':'',sexe:'',
-        naissance:'',ville_naissance:'',pays_naissance:'',adr_perso:'',
-        societe:cols.nom?String(r[cols.nom]||''):'',siren,
-        forme:cols.forme?String(r[cols.forme]||''):'',
-        date_crea:cols.date_crea?String(r[cols.date_crea]||''):'',
-        capital:cols.capital?(parseFloat(String(r[cols.capital]).replace(/[^\d.,]/g,'').replace(',','.'))||0):0,
-        adr_siege:adr,naf:naf.split('—')[0].trim(),naf_lib:naf.split('—')[1]?naf.split('—')[1].trim():naf,
-        linkedin:'',email:'',tel:'',website:'',nb_mandats:0,mandats:'',interests:'',
-        parcours:cols.notes?String(r[cols.notes]||''):'',
-        statut:'À contacter',notes:cols.notes?String(r[cols.notes]||''):'',_done:false,_imported:true
-      };
-      newP.push(p);
-    }
-    const keys=new Set(all.map(p=>p._k));let added=0;
-    for(const p of newP){if(!keys.has(p._k)){all.push(p);keys.add(p._k);added++}}
-    save();filter();toast(`📥 ${added}/${newP.length} prospects importés (doublons ignorés)`);
-    // Lance LinkedIn auto
-    if(added){await enrichLinkedInFor(all.filter(p=>p._imported&&!p._done&&!p.linkedin))}
-  };
-  inp.click();
-}
-async function enrichLinkedInFor(list){
-  if(!list.length)return;
-  const g=$('grid');
-  for(let i=0;i<list.length;i++){
-    const p=list[i],ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';
-    g.innerHTML=ldr(`🔍 LinkedIn ${i+1}/${list.length}…`,Math.round((i/list.length)*100));
-    try{
-      const co=p._bestCo||p.societe||'';
-      const li=await serper(`site:linkedin.com/in "${p.nom}" ${co}`);
-      const cands=(li||[]).filter(r=>/linkedin\.com\/in\//.test(r.link)&&!/\/company\//.test(r.link));
-      let best=null,bs=0;
-      for(const c of cands){const sc=matchScoreLI(p,c.title,c.snippet,ville);if(sc>bs){bs=sc;best=c}}
-      if(best&&bs>=60){p.linkedin=best.link;p._liScore=bs}
-    }catch(e){}
-    p._done=true;
-  }
-  save();filter();
-  toast(`✓ Recherche LinkedIn terminée (${list.filter(p=>p.linkedin).length}/${list.length} matchés)`);
-}
-async function reEnrichLinkedIn(){
-  if(!checkKeys()){toast('Configure tes clés API d\'abord');return}
-  const list=all.filter(p=>!p.linkedin&&p.nom);
-  if(!list.length){toast('Tous les prospects ont déjà un LinkedIn');return}
-  if(!confirm(`Re-chercher LinkedIn pour ${list.length} prospects sans match ?`))return;
-  list.forEach(p=>p._done=false);
-  await enrichLinkedInFor(list);
-}
-
-// Ouvre Google avec query LinkedIn pré-construite (rattrapage manuel)
-function manualLinkedIn(i){
-  const p=all[i];const co=p._bestCo||p.societe||'';
-  const q=`site:linkedin.com/in "${p.nom}" ${co}`;
-  window.open(`https://www.google.com/search?q=${encodeURIComponent(q)}`,'_blank');
-}
-
 // ── SETTINGS (clés API) ──
 function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
 function closeSettings(){$('modalBg').classList.remove('on')}
@@ -841,7 +664,7 @@ const _run=run;run=async function(){if(!checkKeys()){toast('Configure tes clés 
 
 // ── INIT ──
 load();loadHist();renderHist();filter();
-if(!PKEY||!SKEY)openSettings();else backupReminder();
+if(!PKEY||!SKEY)openSettings();
 </script>
 </body>
 </html>
