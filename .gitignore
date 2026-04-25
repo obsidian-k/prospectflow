@@ -1,0 +1,20 @@
+# Données utilisateur (contient PII des prospects)
+prospectflow_data.json
+*_data.json
+
+# Config Claude Code locale
+.claude/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Backups
+*.bak
+*.orig
