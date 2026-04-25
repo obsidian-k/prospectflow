@@ -742,8 +742,7 @@ function render(){
     const birth=[p.naissance,p.ville_naissance,p.pays_naissance].filter(Boolean).join(' — ');
     const via=p.via_pm?` <span style="font:600 9px Inter;color:var(--am)">via ${esc(p.via_pm)}</span>`:'';
     const conf=p._liScore?`<span class="conf ${p._liScore>=70?'conf-hi':p._liScore>=40?'conf-mid':'conf-lo'}">🎯${p._liScore}%</span>`:'';
-    const liQuery=encodeURIComponent(`site:linkedin.com/in "${p.nom}" ${p._bestCo||p.societe||''}`);
-    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:`<a href="https://www.google.com/search?q=${liQuery}" target="_blank" style="color:var(--ac);font-weight:600" title="Chercher sur Google (gratos), copie l'URL puis colle-la dans ✏️">🔍 Chercher</a>`;
+    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:`<a href="javascript:void(0)" onclick="pasteLI(${i})" style="color:var(--ac);font-weight:600" title="Coller l'URL LinkedIn">📋 Coller URL</a>`;
     const pappersUrl=`https://www.pappers.fr/entreprise/${p.siren}`;
     const webH=p.website?`<a href="https://${esc(p.website)}" target="_blank">${esc(p.website)}</a>`:'';
 
@@ -812,6 +811,20 @@ function upd(i,field,val){
     enrichInterests(all[i]).then(()=>{save();filter();toast(all[i].interests?'✓ Intérêts détectés':'Aucun intérêt remonté')}).catch(()=>{});
   }
 }
+// Coller URL LinkedIn pour un prospect → save + auto-scan intérêts
+function pasteLI(i){
+  const url=prompt(`Colle l'URL LinkedIn de ${all[i].nom} :`);
+  if(!url)return;
+  const u=url.trim();
+  if(!/linkedin\.com\/in\//i.test(u)){toast('❌ URL LinkedIn invalide (doit contenir linkedin.com/in/)');return}
+  all[i].linkedin=u;all[i]._liScore=100;save();filter();
+  // Auto-scan intérêts
+  if(checkKeys()&&!all[i].interests){
+    toast('🎯 Scan intérêts en cours…');
+    enrichInterests(all[i]).then(()=>{save();filter();toast(all[i].interests?'✓ Intérêts détectés':'Aucun intérêt remonté')}).catch(()=>{});
+  }
+}
+
 // Bouton "Scanner intérêts" sur card (trigger manuel)
 function scanInterests(i){
   if(!checkKeys())return;
