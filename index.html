@@ -485,29 +485,109 @@ function applyPreset(){const v=$('s_preset').value;if(v==='holding')$('s_naf').v
 function loadMore(){currentPage++;run()}
 function updateMoreBtn(){const mb=$('moreBtn');if(lastTotal>currentPage*perPage){mb.style.display='flex';mb.textContent=`Page ${currentPage+1} (${lastTotal} total)`}else mb.style.display='none'}
 
-// Matching strict LinkedIn — exige prénom+nom dans le TITLE du résultat
-// Reject sec si pas de match nom complet → faible marge d'erreur
-function matchScoreLI(p,title,snippet,ville){
-  const t=(title||'').toLowerCase(),s=(snippet||'').toLowerCase(),full=t+' '+s;
-  const parts=splitName(p.nom),fn=parts.fn.toLowerCase(),ln=parts.ln.toLowerCase();
+// Matching LinkedIn amélioré — normalise accents, gère initiales, bonus slug URL
+function matchScoreLI(p,title,snippet,ville,link){
+  const t=noAccent(title),s=noAccent(snippet),full=t+' '+s;
+  const parts=splitName(p.nom),fn=noAccent(parts.fn),ln=noAccent(parts.ln);
   if(!fn||!ln)return 0;
   let score=0;
-  if(t.includes(fn)&&t.includes(ln))score+=50; // prénom+nom dans title = strong
-  else if(full.includes(fn)&&full.includes(ln))score+=25; // dans snippet seul = faible
-  else return 0; // pas de match nom complet → reject
+  // Prénom+nom dans title = strong (50). Dans snippet = mid (30). Sinon initiale+nom dans title = light (20).
+  if(t.includes(fn)&&t.includes(ln))score+=50;
+  else if(full.includes(fn)&&full.includes(ln))score+=30;
+  else if(fn.length>0&&t.includes(fn[0]+'. '+ln)||t.includes(fn[0]+' '+ln))score+=20; // "P. Ronsin" ou "P Ronsin"
+  else return 0;
+  // Bonus si l'URL slug LinkedIn ressemble à prenom-nom (ex: /in/patrick-ronsin)
+  if(link){const slug=noAccent(link.replace(/.*linkedin\.com\/in\//,'').split(/[\/?#]/)[0]);if(slug.includes(fn)&&slug.includes(ln))score+=15}
+  // Société match (any of mandats / société / bestCo)
   const cos=[p.societe,p._bestCo,...(p.mandats||'').split(', ')].filter(Boolean);
-  for(const co of cos){const c=co.toLowerCase().replace(/[^a-zàâéèêëïîôùûüç0-9]/g,' ').trim();if(c.length>2&&full.includes(c)){score+=30;break}}
-  if(ville){const v=ville.toLowerCase().replace(/[^a-zàâéèêëïîôùûüç]/g,'');if(v.length>2&&full.includes(v))score+=20}
+  for(const co of cos){const c=noAccent(co).replace(/[^a-z0-9]/g,' ').trim();if(c.length>2&&full.includes(c)){score+=30;break}}
+  // Ville match
+  if(ville){const v=noAccent(ville).replace(/[^a-z]/g,'');if(v.length>2&&full.includes(v))score+=20}
   return Math.min(score,100);
 }
 
 // ── SERPER ──
-async function serper(q){
+async function serper(q,num=10){
   if(credits.serper!==null&&credits.serper<=0)return[];
-  const r=await fetch(SAPI,{method:'POST',headers:{'X-API-KEY':SKEY,'Content-Type':'application/json'},body:JSON.stringify({q,gl:'fr',hl:'fr',num:3})});
+  const r=await fetch(SAPI,{method:'POST',headers:{'X-API-KEY':SKEY,'Content-Type':'application/json'},body:JSON.stringify({q,gl:'fr',hl:'fr',num})});
   if(!r.ok){credits.serper=0;syncBadges();return[]}
   const j=await r.json();if(j.credits!==undefined){credits.serper=Math.max(0,2500-(j.credits||0));syncBadges()}
   return j.organic||[];
+}
+// Normalisation accents pour matching robuste (Sébastien → sebastien, Crémant → cremant)
+function noAccent(s){return(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase()}
+
+// ── LINKEDIN MULTI-QUERY (2-3 recherches Serper, garde le meilleur match) ──
+async function findLinkedIn(p,ville){
+  const co=p._bestCo||p.societe||'';
+  const queries=[
+    `site:linkedin.com/in "${p.nom}" ${co}`,
+    `site:linkedin.com/in "${p.nom}" ${ville} ${shortF(p.forme||'')}`,
+  ];
+  let best=null,bs=0;
+  for(const q of queries){
+    const li=await serper(q,10).catch(()=>[]);
+    const cands=(li||[]).filter(r=>/linkedin\.com\/in\//.test(r.link)&&!/\/company\//.test(r.link));
+    for(const c of cands){const sc=matchScoreLI(p,c.title,c.snippet,ville,c.link);if(sc>bs){bs=sc;best=c}}
+    if(bs>=80)break; // si on a un excellent match, pas besoin de la 2e query
+  }
+  if(best&&bs>=55){p.linkedin=best.link;p._liScore=bs}
+}
+
+// ── INTÉRÊTS / PARCOURS (Google search ciblée) ──
+const NOISE_INT=/mentions?\slégales|cookies|SIREN\s|RCS\s|capital\ssocial|kbis|décédée?|inhumée?|né\sen\s1[5-8]/i;
+const NDOM_INT=/pappers\.fr|societe\.com|verif\.com|infonet\.fr|infogreffe|bodacc|geneanet|filae|ancestry|dirigeant\.com|manageo/i;
+const ITAGS=[
+  {rx:/marathon|running|trail|course\sà\spied|10\s?km|semi-marathon/i,t:'🏃 Running'},
+  {rx:/triathlon|ironman/i,t:'🏊 Triathlon'},
+  {rx:/cycli|vélo|vtt|gravel/i,t:'🚴 Cyclisme'},
+  {rx:/golf/i,t:'⛳ Golf'},{rx:/tennis/i,t:'🎾 Tennis'},
+  {rx:/rugby/i,t:'🏉 Rugby'},{rx:/football|foot\b/i,t:'⚽ Foot'},
+  {rx:/voile|régate|skipper|navigation/i,t:'⛵ Voile'},
+  {rx:/surf|kite|wing\s?foil|paddle/i,t:'🏄 Surf'},
+  {rx:/ski\b|snowboard|hors-piste/i,t:'⛷️ Ski'},
+  {rx:/randonn|trek|alpinisme/i,t:'🥾 Rando'},
+  {rx:/yoga|méditation|pilates/i,t:'🧘 Yoga'},
+  {rx:/crossfit|fitness|musculation/i,t:'💪 Fitness'},
+  {rx:/equitation|cheval|polo\b/i,t:'🐎 Équitation'},
+  {rx:/canoë|kayak|aviron/i,t:'🛶 Aviron'},
+  {rx:/escalade|grimpe/i,t:'🧗 Escalade'},
+  {rx:/plongée|apnée/i,t:'🤿 Plongée'},
+  {rx:/chasse\b/i,t:'🦌 Chasse'},{rx:/pêche\b/i,t:'🎣 Pêche'},
+  {rx:/vin\b|œnolog|vignoble|cave|primeur|grand\scru/i,t:'🍷 Vin'},
+  {rx:/gastronom|cuisine|chef\b|étoilé|michelin/i,t:'🍽️ Gastro'},
+  {rx:/musique|musicien|guitare|piano|concert|festival/i,t:'🎵 Musique'},
+  {rx:/photo(?:graphie)?|photographe/i,t:'📷 Photo'},
+  {rx:/art\scontemporain|peinture|sculpture|galerie|collection/i,t:'🎨 Art'},
+  {rx:/théâtre|opéra|spectacle/i,t:'🎭 Culture'},
+  {rx:/voyage|tour\sdu\smonde|expédition/i,t:'✈️ Voyage'},
+  {rx:/associat|bénévol|humanitaire|fondation|mécén/i,t:'🤝 Asso'},
+  {rx:/rotary|lions?\sclub|jeune\schambre|table\sronde/i,t:'🏛️ Club'},
+  {rx:/tech|startup|innovation|digital/i,t:'💻 Tech'},
+  {rx:/invest|business\sangel|venture|private\sequity|capital-?invest|family\soffice/i,t:'📈 Invest'},
+  {rx:/famille|enfants?|père\sde|mère\sde/i,t:'👨‍👩 Famille'},
+];
+const SCHOOLS=/HEC|ESSEC|ESCP|EDHEC|EM\sLyon|EMLyon|Polytechnique|X\b|Centrale|Mines|Ponts|INSEAD|Sciences\s?Po|Dauphine|ENS\b|ENA\b|MBA|Wharton|Stanford|Harvard|MIT|LSE|HEC\sParis/i;
+const COMPANIES_PRESTIGE=/McKinsey|Bain|BCG|Goldman\sSachs|Morgan\sStanley|Rothschild|Lazard|JP\s?Morgan|Capgemini|Accenture|Deloitte|EY\b|PwC|KPMG|TotalEnergies|LVMH|L'Oréal|Sanofi|BNP\sParibas|Société\sGénérale|Crédit\sAgricole|AXA|Allianz/i;
+async function enrichInterests(p,ville){
+  ville=ville||p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';
+  const queries=[
+    `"${p.nom}" ${ville} (marathon OR golf OR vin OR association OR fondation OR rotary OR voile OR ski)`,
+    `"${p.nom}" parcours OR fondateur OR ancien OR diplômé OR ${shortF(p.forme||'')}`,
+  ];
+  const tags=new Set(),parc=new Set();
+  for(const q of queries){
+    const res=await serper(q,10).catch(()=>[]);
+    for(const r of res){
+      const txt=(r.snippet||'')+' '+(r.title||'');
+      if(NOISE_INT.test(txt)||NDOM_INT.test(r.link||'')||txt.length<25)continue;
+      for(const t of ITAGS)if(t.rx.test(txt))tags.add(t.t);
+      const sm=txt.match(SCHOOLS),cm=txt.match(COMPANIES_PRESTIGE);
+      if(sm)parc.add(sm[0]);if(cm)parc.add(cm[0]);
+    }
+  }
+  if(tags.size)p.interests=[...tags].slice(0,6).join('  ');
+  if(parc.size)p.parcours=[...parc].slice(0,4).join(' · ');
 }
 
 // ── BUILD PROSPECT ──
@@ -616,14 +696,9 @@ async function run(){
       for(let i=0;i<toE.length;i++){
         const p=toE[i],ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';
         try{
-          if(!p.linkedin){
-            const co=p._bestCo||p.societe||'';
-            const li=await serper(`site:linkedin.com/in "${p.nom}" ${co}`);
-            const cands=(li||[]).filter(r=>/linkedin\.com\/in\//.test(r.link)&&!/\/company\//.test(r.link));
-            let best=null,bs=0;
-            for(const c of cands){const sc=matchScoreLI(p,c.title,c.snippet,ville);if(sc>bs){bs=sc;best=c}}
-            if(best&&bs>=60){p.linkedin=best.link;p._liScore=bs}
-          }
+          if(!p.linkedin){await findLinkedIn(p,ville)}
+          // Auto-scan intérêts si LinkedIn trouvé
+          if(p.linkedin&&!p.interests)await enrichInterests(p,ville);
         }catch(e){}
         g.innerHTML=ldr(`3/4 — LinkedIn ${i+1}/${toE.length}…`,55+Math.round((i/toE.length)*25));
       }
@@ -709,6 +784,7 @@ function render(){
 </div>
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
+  ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
 </div>
 <div class="c-edit" id="edit-${i}" style="display:none">
@@ -729,7 +805,22 @@ function kpis(){
   $('k3').textContent=vis.length;
 }
 function toggleEdit(i){const el=$('edit-'+i);if(el)el.style.display=el.style.display==='none'?'block':'none'}
-function upd(i,field,val){all[i][field]=val;save();filter()}
+function upd(i,field,val){
+  const old=all[i][field];all[i][field]=val;save();filter();
+  // Trigger : si on vient de coller un LinkedIn et qu'il n'y a pas encore d'intérêts → scan auto
+  if(field==='linkedin'&&val&&val.startsWith('http')&&!old&&!all[i].interests){
+    if(!checkKeys())return;
+    toast('🎯 Scan intérêts en cours…');
+    enrichInterests(all[i]).then(()=>{save();filter();toast(all[i].interests?'✓ Intérêts détectés':'Aucun intérêt remonté')}).catch(()=>{});
+  }
+}
+// Bouton "Scanner intérêts" sur card (trigger manuel)
+function scanInterests(i){
+  if(!checkKeys())return;
+  const p=all[i];if(!p.linkedin&&!confirm('Pas de LinkedIn renseigné. Scanner quand même via le nom ?'))return;
+  toast('🎯 Scan intérêts en cours…');
+  enrichInterests(p).then(()=>{save();filter();toast(p.interests?'✓ Intérêts détectés':'Aucun intérêt remonté')});
+}
 function note(i,v){all[i].notes=v;save()}
 function clearAll(){if(confirm('Supprimer tous les prospects ?')){all=[];save();filter();toast('Réinitialisé')}}
 function toast(m){const t=document.createElement('div');t.className='toast';t.innerHTML=`<span style="color:var(--gn)">✓</span>${m}`;document.body.appendChild(t);setTimeout(()=>t.remove(),3000)}
