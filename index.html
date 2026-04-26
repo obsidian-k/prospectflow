@@ -269,11 +269,11 @@ body{min-height:100vh}
     <h2>🔑 Clés API requises</h2>
     <p>Cette app utilise <a href="https://www.pappers.fr/api" target="_blank">Pappers</a> et <a href="https://serper.dev" target="_blank">Serper</a>. Tes clés sont stockées <b>uniquement dans ce navigateur</b> (localStorage), jamais envoyées ailleurs.</p>
     <label>Clé Pappers (api.pappers.fr/v2)</label>
-    <input id="i_pkey" type="password" placeholder="a259f228bf749475…">
+    <input id="i_pkey" type="text" placeholder="a259f228bf749475…" autocomplete="off" spellcheck="false">
     <label>Clé Serper (google.serper.dev)</label>
-    <input id="i_skey" type="password" placeholder="92903f420cf7c8f0…">
+    <input id="i_skey" type="text" placeholder="92903f420cf7c8f0…" autocomplete="off" spellcheck="false">
     <label>PAT Airtable (optionnel — pour bouton 📤 sur cards)</label>
-    <input id="i_atkey" type="password" placeholder="patXXXXXX...">
+    <input id="i_atkey" type="text" placeholder="patXXXXXX..." autocomplete="off" spellcheck="false">
     <div class="modal-act">
       <button class="btn" onclick="closeSettings()">Annuler</button>
       <button class="btn btn-ac" onclick="saveSettings()">Enregistrer</button>
@@ -479,7 +479,7 @@ async function ftEntreprise(siren){const c=cacheGet('e_'+siren);if(c)return c;co
 async function ftMandats(fn,ln){const k='m_'+(fn+'_'+ln).toLowerCase().replace(/[^a-z0-9]/g,'');const c=cacheGet(k);if(c)return c;const d=await ft(`${PAPI}/recherche-dirigeants?api_token=${PKEY}&nom_dirigeant=${encodeURIComponent(ln)}&prenom_dirigeant=${encodeURIComponent(fn)}&par_page=5`);if(d)cacheSet(k,d);return d}
 
 // ── HELPERS ──
-async function ft(u){const r=await fetch(u);if(r.status===401){toast('🔑 Clé Pappers invalide — re-saisis tes clés');setTimeout(openSettings,800);throw new Error('Clé API invalide (401)')}if(r.status===403||r.status===429)throw new Error('API épuisée');if(!r.ok)throw new Error(`HTTP ${r.status}`);const c=parseFloat(r.headers.get('x-request-cost'))||0;if(c>0){credits.pappers+=c;syncBadges()}return r.json()}
+async function ft(u){const r=await fetch(u);if(r.status===401)throw new Error('Clé Pappers invalide → clic ⚙️ pour la corriger');if(r.status===403||r.status===429)throw new Error('API Pappers épuisée');if(!r.ok)throw new Error(`HTTP ${r.status}`);const c=parseFloat(r.headers.get('x-request-cost'))||0;if(c>0){credits.pappers+=c;syncBadges()}return r.json()}
 function wait(ms){return new Promise(r=>setTimeout(r,ms))}
 function chunk(a,n){const r=[];for(let i=0;i<a.length;i+=n)r.push(a.slice(i,i+n));return r}
 function dmy(d){const[y,m,dd]=d.split('-');return`${dd}-${m}-${y}`}
