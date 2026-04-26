@@ -333,26 +333,30 @@ async function linkFile(){
     const handle=await window.showSaveFilePicker({suggestedName:'prospectflow_data.json',types:[{description:'ProspectFlow data',accept:{'application/json':['.json']}}]});
     const perm=await handle.requestPermission({mode:'readwrite'});
     if(perm!=='granted'){toast('Permission refusée');return}
-    // Si fichier existant avec données → propose de charger
+    // Toujours lire le fichier AVANT d'écrire — règle: la version la plus récente gagne (ts), pas de confirm chiant
     let existing=null;
     try{const f=await handle.getFile();if(f.size>0)existing=JSON.parse(await f.text())}catch(e){}
-    if(existing&&(existing.prospects||existing.keys)){
-      const msg=`Fichier détecté:\n• ${(existing.prospects||[]).length} prospects\n• ${(existing.history||[]).length} recherches en historique\n• Clés API: ${existing.keys?'oui':'non'}\n\nCharger ce contenu (remplace la base actuelle) ?`;
-      if(confirm(msg)){
-        if(existing.prospects)all=existing.prospects;
-        if(existing.history){hist=existing.history;saveHist();renderHist()}
-        if(existing.keys&&existing.keys.pkey&&existing.keys.skey){
-          PKEY=existing.keys.pkey;SKEY=existing.keys.skey;
-          localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);
-          closeSettings();
-        }
-        save();filter();
+    const fileTs=(existing&&existing.ts)||0;
+    const localTs=parseInt(localStorage.getItem('pf_savedTs'))||0;
+    const fileHasData=existing&&((existing.prospects&&existing.prospects.length)||(existing.keys&&existing.keys.pkey));
+    const localHasData=all.length||PKEY;
+    if(fileHasData&&(fileTs>=localTs||!localHasData)){
+      // Fichier gagne (plus récent OU local vide) → charge
+      if(existing.prospects)all=existing.prospects;
+      if(existing.history){hist=existing.history;saveHist();renderHist()}
+      if(existing.keys&&existing.keys.pkey&&existing.keys.skey){
+        PKEY=existing.keys.pkey;SKEY=existing.keys.skey;
+        localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);
+        if(existing.keys.atkey){ATKEY=existing.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}
+        closeSettings();
       }
+      try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(fileTs))}catch(e){}
+      filter();toast(`📂 Chargé depuis fichier : ${all.length} prospects`);
     }
     _fileHandle=handle;_syncStatus='linked';updateSyncBtn();
     await idbSet('pf_fh',handle);
     await syncFileNow();
-    toast('🔗 Drive lié — auto-save activé (clés + base + historique)');
+    toast('🔗 Drive lié — auto-save activé');
   }catch(e){if(e.name!=='AbortError')toast('Erreur: '+e.message)}
 }
 
@@ -882,21 +886,24 @@ function showHist(i){
   toast(`${h.label} — ${vis.length} prospects`);
 }
 
-// ── PUSH AIRTABLE (1 clic par prospect, dédup LinkedIn ou Nom+Prénom+Société) ──
+// ── PUSH AIRTABLE (UPSERT : POST si nouveau, PATCH si existe avec nouvelles données) ──
 async function pushAirtable(i){
   if(!ATKEY){toast('🔑 Configure le PAT Airtable dans ⚙️');openSettings();return}
   const p=all[i],parts=splitName(p.nom);
-  // Dédup
-  const filters=[];
-  if(p.linkedin)filters.push(`{LinkedIn}="${p.linkedin.replace(/"/g,'\\"')}"`);
-  if(parts.fn&&parts.ln&&p.societe)filters.push(`AND({Prénom}="${parts.fn.replace(/"/g,'\\"')}",{Nom}="${parts.ln.replace(/"/g,'\\"')}",{Société}="${p.societe.replace(/"/g,'\\"')}")`);
-  if(filters.length){
-    const formula=filters.length>1?`OR(${filters.join(',')})`:filters[0];
-    try{
-      const cu=`${ATAPI}/${ATBASE}/${ATTABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1&fields[]=Nom`;
-      const cr=await fetch(cu,{headers:{'Authorization':`Bearer ${ATKEY}`}});
-      if(cr.ok){const cj=await cr.json();if(cj.records&&cj.records.length){p._pushed=true;save();filter();toast(`⏩ ${p.nom} déjà dans Airtable`);return}}
-    }catch(e){}
+  // Dédup → trouve l'ID si existe déjà
+  let existingId=p._atId||null;
+  if(!existingId){
+    const filters=[];
+    if(p.linkedin)filters.push(`{LinkedIn}="${p.linkedin.replace(/"/g,'\\"')}"`);
+    if(parts.fn&&parts.ln&&p.societe)filters.push(`AND({Prénom}="${parts.fn.replace(/"/g,'\\"')}",{Nom}="${parts.ln.replace(/"/g,'\\"')}",{Société}="${p.societe.replace(/"/g,'\\"')}")`);
+    if(filters.length){
+      const formula=filters.length>1?`OR(${filters.join(',')})`:filters[0];
+      try{
+        const cu=`${ATAPI}/${ATBASE}/${ATTABLE}?filterByFormula=${encodeURIComponent(formula)}&maxRecords=1&fields[]=Nom`;
+        const cr=await fetch(cu,{headers:{'Authorization':`Bearer ${ATKEY}`}});
+        if(cr.ok){const cj=await cr.json();if(cj.records&&cj.records.length)existingId=cj.records[0].id}
+      }catch(e){}
+    }
   }
   // Build Infos (synthèse complète)
   const infos=[];
@@ -929,15 +936,21 @@ async function pushAirtable(i){
   };
   if(p.email)fields['﻿Email']=p.email;
   if(p.tel)fields['Téléphone']=p.tel;
-  // POST
+  // UPSERT : PATCH si existe, POST sinon. Pour PATCH on enlève "Date d'ajout" (préserver l'originale)
+  const isUpdate=!!existingId;
+  if(isUpdate)delete fields["Date d'ajout"];
+  const url=isUpdate?`${ATAPI}/${ATBASE}/${ATTABLE}/${existingId}`:`${ATAPI}/${ATBASE}/${ATTABLE}`;
+  const method=isUpdate?'PATCH':'POST';
   try{
-    const r=await fetch(`${ATAPI}/${ATBASE}/${ATTABLE}`,{
-      method:'POST',
+    const r=await fetch(url,{
+      method,
       headers:{'Authorization':`Bearer ${ATKEY}`,'Content-Type':'application/json'},
       body:JSON.stringify({fields,typecast:true})
     });
     if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${r.status}`)}
-    p._pushed=true;save();filter();toast(`✅ ${p.nom} push Airtable OK`);
+    const j=await r.json();
+    p._pushed=true;p._atId=j.id||existingId;save();filter();
+    toast(isUpdate?`🔄 ${p.nom} mis à jour sur Airtable`:`✅ ${p.nom} créé sur Airtable`);
   }catch(e){toast(`❌ Push échoué: ${e.message}`)}
 }
 
