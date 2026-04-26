@@ -463,7 +463,7 @@ function updateBadge(id,val,mode){
 }
 function syncBadges(){updateBadge('bp',credits.pappers,'cost');updateBadge('bs',credits.serper)}
 async function preflight(){
-  try{const r=await fetch(`${PAPI}/recherche?api_token=${PKEY}&code_naf=6420Z&par_page=1`);if(r.status===403||r.status===429)return '❌ Pappers épuisé';const c=parseFloat(r.headers.get('x-request-cost'))||0;credits.pappers+=c;syncBadges()}catch(e){return '❌ Pappers inaccessible'}
+  try{const r=await fetch(`${PAPI}/recherche?api_token=${PKEY}&code_naf=6420Z&par_page=1`);if(r.status===401){const j=await r.json().catch(()=>({}));if(/cr[ée]dit/i.test(j.error||'')){markPappersDead('ÉPUISÉ');return '❌ Quota Pappers épuisé — recharge ton plan'}markPappersDead('CLÉ KO');return '❌ Clé Pappers invalide'}if(r.status===403||r.status===429){markPappersDead('LIMIT');return '❌ Pappers épuisé'}const c=parseFloat(r.headers.get('x-request-cost'))||0;credits.pappers+=c;syncBadges();markPappersAlive()}catch(e){return '❌ Pappers inaccessible'}
   try{const r=await fetch(SAPI,{method:'POST',headers:{'X-API-KEY':SKEY,'Content-Type':'application/json'},body:JSON.stringify({q:'test',num:1})});if(!r.ok)return '❌ Serper épuisé';const j=await r.json();if(j.credits!==undefined)credits.serper=Math.max(0,2500-(j.credits||0));syncBadges()}catch(e){return '❌ Serper inaccessible'}
   return null;
 }
@@ -479,7 +479,9 @@ async function ftEntreprise(siren){const c=cacheGet('e_'+siren);if(c)return c;co
 async function ftMandats(fn,ln){const k='m_'+(fn+'_'+ln).toLowerCase().replace(/[^a-z0-9]/g,'');const c=cacheGet(k);if(c)return c;const d=await ft(`${PAPI}/recherche-dirigeants?api_token=${PKEY}&nom_dirigeant=${encodeURIComponent(ln)}&prenom_dirigeant=${encodeURIComponent(fn)}&par_page=5`);if(d)cacheSet(k,d);return d}
 
 // ── HELPERS ──
-async function ft(u){const r=await fetch(u);if(r.status===401){const j=await r.json().catch(()=>({}));if(/cr[ée]dit/i.test(j.error||''))throw new Error('Quota Pappers épuisé — recharge ton plan sur pappers.fr');throw new Error('Clé Pappers invalide → clic ⚙️ pour la corriger')}if(r.status===403||r.status===429)throw new Error('API Pappers épuisée');if(!r.ok)throw new Error(`HTTP ${r.status}`);const c=parseFloat(r.headers.get('x-request-cost'))||0;if(c>0){credits.pappers+=c;syncBadges()}return r.json()}
+function markPappersDead(label){const el=$('bp');if(!el)return;el.classList.add('dead');const sp=el.querySelector('span');if(sp)sp.textContent=label||'ÉPUISÉ'}
+function markPappersAlive(){const el=$('bp');if(!el)return;el.classList.remove('dead')}
+async function ft(u){const r=await fetch(u);if(r.status===401){const j=await r.json().catch(()=>({}));if(/cr[ée]dit/i.test(j.error||'')){markPappersDead('ÉPUISÉ');throw new Error('Quota Pappers épuisé — recharge ton plan sur pappers.fr')}markPappersDead('CLÉ KO');throw new Error('Clé Pappers invalide → clic ⚙️ pour la corriger')}if(r.status===403||r.status===429){markPappersDead('LIMIT');throw new Error('API Pappers épuisée')}if(!r.ok)throw new Error(`HTTP ${r.status}`);const c=parseFloat(r.headers.get('x-request-cost'))||0;if(c>0){credits.pappers+=c;syncBadges()}markPappersAlive();return r.json()}
 function wait(ms){return new Promise(r=>setTimeout(r,ms))}
 function chunk(a,n){const r=[];for(let i=0;i<a.length;i+=n)r.push(a.slice(i,i+n));return r}
 function dmy(d){const[y,m,dd]=d.split('-');return`${dd}-${m}-${y}`}
