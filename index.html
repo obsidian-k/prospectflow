@@ -67,7 +67,8 @@ body{min-height:100vh}
 
 /* ─── MAIN ─── */
 .main{padding:20px;overflow-y:auto}
-.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:18px}
+@media(max-width:700px){.kpis{grid-template-columns:repeat(2,1fr)}}
 .kpi{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px}
 .kpi-l{font:700 9px/1 Inter;text-transform:uppercase;letter-spacing:.6px;color:var(--tx3);margin-bottom:6px}
 .kpi-v{font:900 26px/1 Inter;letter-spacing:-1px}
@@ -241,8 +242,9 @@ body{min-height:100vh}
   <div class="main">
     <div class="kpis">
       <div class="kpi k-ac"><div class="kpi-l">Prospects</div><div class="kpi-v" id="k1">0</div></div>
-      <div class="kpi k-gn"><div class="kpi-l">Enrichis</div><div class="kpi-v" id="k2">0</div></div>
-      <div class="kpi k-bl"><div class="kpi-l">Affichés</div><div class="kpi-v" id="k3">0</div></div>
+      <div class="kpi k-gn"><div class="kpi-l">Enrichis (LinkedIn)</div><div class="kpi-v" id="k2">0</div></div>
+      <div class="kpi k-bl"><div class="kpi-l">Poussés Airtable</div><div class="kpi-v" id="k4">0</div></div>
+      <div class="kpi"><div class="kpi-l">Affichés</div><div class="kpi-v" id="k3">0</div></div>
     </div>
 
     <div class="tbar">
@@ -250,8 +252,10 @@ body{min-height:100vh}
       <div class="srch"><svg viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg><input id="q" placeholder="Filtrer…" oninput="filter()"></div>
       <div class="pills" id="pills">
         <div class="pill on" data-f="" onclick="setP(this)">Tous</div>
+        <div class="pill" data-f="topush" onclick="setP(this)">À pousser <span id="cnt-topush" style="font-weight:900;margin-left:2px"></span></div>
         <div class="pill" data-f="enriched" onclick="setP(this)">Enrichis</div>
         <div class="pill" data-f="⚡3+" onclick="setP(this)">⚡ 3+</div>
+        <div class="pill" data-f="skip" onclick="setP(this)" style="opacity:.6">❌ Skipés</div>
       </div>
     </div>
 
@@ -296,6 +300,7 @@ const DATAFILE='prospectflow_data.json';
 const MAX_RESULTS=20; // Cap dur par clic — maitrise du temps de chasse
 
 let all=[],vis=[],pF='',currentPage=1,perPage=MAX_RESULTS,lastTotal=0;
+let _cessionCtx={}; // siren → {date, type, commercant, parties} pour preset cessions
 const credits={pappers:0,serper:null};
 const $=id=>document.getElementById(id);
 
@@ -645,11 +650,29 @@ async function run(){
       const r=await fetch(`${BAPI}?${bp}`).then(rr=>rr.json()).catch(()=>({records:[]}));
       lastTotal=r.nhits||0;
       const seen=new Set();
+      _cessionCtx={}; // siren → {date, type, commercant, parties[], texte}
       for(const rec of r.records||[]){
         const f=rec.fields||{};
         const raw=JSON.stringify(f.registre||'')+' '+JSON.stringify(f.listepersonnes||'');
         const m=raw.match(/\b(\d{9})\b/);
-        if(m&&!seen.has(m[1])){seen.add(m[1]);sirens.push(m[1])}
+        if(m&&!seen.has(m[1])){
+          seen.add(m[1]);sirens.push(m[1]);
+          // Parse contexte cession (vendeur, acquéreur, type, date)
+          const ctx={date:f.dateparution||'',type:f.typeavis_lib||f.typeavis||'',ville:f.ville||'',cp:f.cp||''};
+          try{const co=typeof f.commercant==='string'?JSON.parse(f.commercant):f.commercant;if(co)ctx.commercant=co.denomination||co.nom||''}catch(e){}
+          try{
+            const lp=typeof f.listepersonnes==='string'?JSON.parse(f.listepersonnes):f.listepersonnes;
+            if(lp){
+              const arr=lp.personne?(Array.isArray(lp.personne)?lp.personne:[lp.personne]):(Array.isArray(lp)?lp:[lp]);
+              ctx.parties=arr.map(pp=>{
+                const role=pp.qualite||pp.typePersonne||'';
+                const name=pp.denomination||`${pp.prenom||''} ${pp.nom||''}`.trim();
+                return name?(role?`${role}: ${name}`:name):''
+              }).filter(Boolean).slice(0,4);
+            }
+          }catch(e){}
+          _cessionCtx[m[1]]=ctx;
+        }
       }
     } else {
       g.innerHTML=ldr('1/4 — Pappers…',5);
@@ -689,6 +712,9 @@ async function run(){
       g.innerHTML=ldr(`2/4 — ${kept}/${MAX_RESULTS} retenues…`,15+Math.round((i/sirens.length)*20));
     }
     if(!newP.length){g.innerHTML='<div class="empty"><h3>Aucun dirigeant identifiable</h3><p>Aucune entreprise ne matche vos critères.</p></div>';return}
+
+    // Injecte le contexte cession (BODACC) sur les prospects concernés
+    if(isCession)for(const p of newP)if(_cessionCtx[p.siren])p.cession=_cessionCtx[p.siren];
 
     const keys=new Set(all.map(p=>p._k));let added=0;
     for(const p of newP){if(!keys.has(p._k)){all.push(p);keys.add(p._k);added++}}
@@ -736,6 +762,10 @@ function filter(){
   const q=($('q').value||'').toLowerCase();
   vis=all.filter(p=>{
     if(q){const h=[p.nom,p.societe,p.adr_siege,p.adr_perso,p.siren,p.email,p.notes,p.qualite,p.mandats].join(' ').toLowerCase();if(!h.includes(q))return false}
+    // Skip: par défaut on cache, sauf si pill 'skip' est actif
+    if(pF==='skip')return !!p._skip;
+    if(p._skip)return false;
+    if(pF==='topush')return !p._pushed;
     if(pF==='enriched')return !!(p.email||p.tel||p.linkedin);
     if(pF==='⚡3+')return(parseInt(p.nb_mandats)||0)>=3;
     return true;
@@ -781,6 +811,7 @@ function render(){
     ${p.mandats?`<div class="ir"><span class="l">Mandats</span><span class="v">${esc(p.mandats)}</span></div>`:''}
     ${p.interests?`<div class="ir"><span class="l">Intérêts</span><span class="v">${esc(p.interests)}</span></div>`:''}
     ${p.parcours?`<div class="ir"><span class="l">Parcours</span><span class="v" style="color:var(--am)">${esc(p.parcours)}</span></div>`:''}
+    ${p.cession?`<div class="ir"><span class="l">Cession</span><span class="v" style="color:var(--ac);font-weight:700">${esc((p.cession.date||'')+' '+(p.cession.type||''))}${p.cession.parties&&p.cession.parties.length?' — '+esc(p.cession.parties.join(' / ')):''}</span></div>`:''}
   </div>
   <div class="c-col">
     <div class="c-col-t">Société</div>
@@ -795,6 +826,7 @@ function render(){
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
   <button class="btn-sm btn-ghost" onclick="pushAirtable(${i})" style="${p._pushed?'color:var(--gn)':''}" title="${p._pushed?'Re-push pour mettre à jour Airtable':'Pousser sur Airtable'}">${p._pushed?'🔄 AT':'📤'}</button>
+  <button class="btn-sm btn-ghost" onclick="skipProspect(${i})" title="${p._skip?'Ré-afficher':'Masquer (hors-scope)'}" style="${p._skip?'color:var(--am)':''}">${p._skip?'↩️':'❌'}</button>
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
 </div>
 <div class="c-edit" id="edit-${i}" style="display:none">
@@ -810,9 +842,12 @@ function render(){
 </div>`}).join('')}
 
 function kpis(){
-  $('k1').textContent=all.length;
-  $('k2').textContent=all.filter(p=>p.email||p.tel||p.linkedin).length;
+  const live=all.filter(p=>!p._skip);
+  $('k1').textContent=live.length;
+  $('k2').textContent=live.filter(p=>p.linkedin).length;
   $('k3').textContent=vis.length;
+  $('k4').textContent=live.filter(p=>p._pushed).length;
+  const cntTopush=$('cnt-topush');if(cntTopush){const n=live.filter(p=>!p._pushed).length;cntTopush.textContent=n?`(${n})`:''}
 }
 function toggleEdit(i){const el=$('edit-'+i);if(el)el.style.display=el.style.display==='none'?'block':'none'}
 function upd(i,field,val){
@@ -846,6 +881,12 @@ function scanInterests(i){
   enrichInterests(p).then(()=>{save();filter();toast(p.interests?'✓ Intérêts détectés':'Aucun intérêt remonté')});
 }
 function note(i,v){all[i].notes=v;save()}
+function skipProspect(i){
+  const p=all[i];
+  if(p._skip){p._skip=false;save();filter();toast(`✓ ${p.nom} ré-affiché`);return}
+  if(!confirm(`Masquer "${p.nom}" (hors-scope, homonyme, etc.) ?\nIl ne s'affichera plus, sauf via le filtre "❌ Skipés".`))return;
+  p._skip=true;save();filter();toast(`❌ ${p.nom} masqué`);
+}
 function clearAll(){if(confirm('Supprimer tous les prospects ?')){all=[];save();filter();toast('Réinitialisé')}}
 function toast(m){const t=document.createElement('div');t.className='toast';t.innerHTML=`<span style="color:var(--gn)">✓</span>${m}`;document.body.appendChild(t);setTimeout(()=>t.remove(),3000)}
 
@@ -916,6 +957,7 @@ async function pushAirtable(i){
   if(p.adr_siege)infos.push(`Siège: ${p.adr_siege}`);
   if(p.naf_lib||p.naf)infos.push(`NAF: ${p.naf_lib||p.naf}`);
   if(p.via_pm)infos.push(`Via holding: ${p.via_pm}`);
+  if(p.cession){const c=p.cession;infos.push(`CESSION BODACC: ${c.date||''} ${c.type||''}${c.parties&&c.parties.length?' — '+c.parties.join(' / '):''}`)}
   if(p.nb_mandats)infos.push(`Mandats (${p.nb_mandats}): ${p.mandats||''}`);
   if(p.interests)infos.push(`Intérêts: ${p.interests}`);
   if(p.parcours)infos.push(`Parcours: ${p.parcours}`);
