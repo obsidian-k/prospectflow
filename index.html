@@ -502,24 +502,36 @@ function applyPreset(){const v=$('s_preset').value;if(v==='holding')$('s_naf').v
 function loadMore(){currentPage++;run()}
 function updateMoreBtn(){const mb=$('moreBtn');if(lastTotal>currentPage*perPage){mb.style.display='flex';mb.textContent=`Page ${currentPage+1} (${lastTotal} total)`}else mb.style.display='none'}
 
-// Matching LinkedIn amélioré — normalise accents, gère initiales, bonus slug URL
+// Matching LinkedIn STRICT — word boundaries + slug = source de vérité
 function matchScoreLI(p,title,snippet,ville,link){
   const t=noAccent(title),s=noAccent(snippet),full=t+' '+s;
   const parts=splitName(p.nom),fn=noAccent(parts.fn),ln=noAccent(parts.ln);
-  if(!fn||!ln)return 0;
+  if(!fn||!ln||fn.length<2||ln.length<2)return 0;
+  // Helpers: word-boundary regex pour éviter "Patrick" qui matche "Patricia"
+  const wb=s=>new RegExp(`\\b${s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\b`,'i');
+  const hasFnTitle=wb(fn).test(t),hasLnTitle=wb(ln).test(t);
+  const hasFnFull=wb(fn).test(full),hasLnFull=wb(ln).test(full);
+  // 1. Slug LinkedIn = source de vérité. Si présent et ne match PAS prénom-nom → reject sec
+  let slugOk=null;
+  if(link){
+    const slug=noAccent(link.replace(/.*linkedin\.com\/in\//,'').split(/[\/?#]/)[0]).replace(/-\d+$/,'');
+    const slugHasFn=slug.includes(fn),slugHasLn=slug.includes(ln);
+    if(slug.length>3){
+      if(slugHasFn&&slugHasLn)slugOk=true;
+      else if(slugHasLn&&slug.includes(fn[0]))slugOk=true; // "p-ronsin" pour Patrick Ronsin
+      else slugOk=false; // slug existe mais ne contient même pas le nom de famille → reject
+    }
+  }
+  if(slugOk===false)return 0; // homonyme à coup sûr
   let score=0;
-  // Prénom+nom dans title = strong (50). Dans snippet = mid (30). Sinon initiale+nom dans title = light (20).
-  if(t.includes(fn)&&t.includes(ln))score+=50;
-  else if(full.includes(fn)&&full.includes(ln))score+=30;
-  else if(fn.length>0&&t.includes(fn[0]+'. '+ln)||t.includes(fn[0]+' '+ln))score+=20; // "P. Ronsin" ou "P Ronsin"
-  else return 0;
-  // Bonus si l'URL slug LinkedIn ressemble à prenom-nom (ex: /in/patrick-ronsin)
-  if(link){const slug=noAccent(link.replace(/.*linkedin\.com\/in\//,'').split(/[\/?#]/)[0]);if(slug.includes(fn)&&slug.includes(ln))score+=15}
-  // Société match (any of mandats / société / bestCo)
+  if(hasFnTitle&&hasLnTitle)score+=55; // prénom+nom mots complets dans title
+  else if(hasFnFull&&hasLnFull)score+=30; // mots complets quelque part
+  else return 0; // pas de match exact des 2 mots → reject
+  if(slugOk===true)score+=25; // confirmation par URL
+  // Société match — exige >=4 chars pour éviter matches débiles
   const cos=[p.societe,p._bestCo,...(p.mandats||'').split(', ')].filter(Boolean);
-  for(const co of cos){const c=noAccent(co).replace(/[^a-z0-9]/g,' ').trim();if(c.length>2&&full.includes(c)){score+=30;break}}
-  // Ville match
-  if(ville){const v=noAccent(ville).replace(/[^a-z]/g,'');if(v.length>2&&full.includes(v))score+=20}
+  for(const co of cos){const c=noAccent(co).replace(/[^a-z0-9]/g,' ').trim();if(c.length>=4&&wb(c).test(full)){score+=20;break}}
+  if(ville){const v=noAccent(ville).replace(/[^a-z]/g,'');if(v.length>=3&&wb(v).test(full))score+=15}
   return Math.min(score,100);
 }
 
