@@ -792,7 +792,7 @@ function render(){
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
-  ${p._pushed?`<span class="btn-sm" style="color:var(--gn);font-weight:700;cursor:default" title="Déjà poussé sur Airtable">✅ AT</span>`:`<button class="btn-sm btn-ghost" onclick="pushAirtable(${i})" title="Pousser ce prospect sur Airtable">📤</button>`}
+  <button class="btn-sm btn-ghost" onclick="pushAirtable(${i})" style="${p._pushed?'color:var(--gn)':''}" title="${p._pushed?'Re-push pour mettre à jour Airtable':'Pousser sur Airtable'}">${p._pushed?'🔄 AT':'📤'}</button>
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
 </div>
 <div class="c-edit" id="edit-${i}" style="display:none">
