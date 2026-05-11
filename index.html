@@ -157,13 +157,18 @@ a{color:inherit;text-decoration:none}
 .grid{display:flex;flex-direction:column;gap:var(--space-3)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden;transition:border-color var(--t),box-shadow var(--t)}
 .card:hover{border-color:var(--border-strong)}
+/* States: à pousser (orange CTA) / poussé (vert success) / skip (muted discret) */
+.card.state-topush{border-left:3px solid var(--obsidian-orange)}
+.card.state-pushed{border-left:3px solid var(--positive)}
+.card.state-skip{opacity:.55}
+/* Legacy alias — gardé pour compat */
 .card.enriched,.card.featured{border-left:3px solid var(--obsidian-orange)}
 
 .c-top{display:flex;align-items:center;justify-content:space-between;padding:var(--space-4) var(--space-5);gap:var(--space-2)}
 .c-id{display:flex;align-items:center;gap:var(--space-3)}
 .av{width:40px;height:40px;border-radius:var(--radius-full);display:grid;place-items:center;font-family:var(--font-sans);font-weight:600;font-size:13px;color:#fff;flex-shrink:0;text-transform:uppercase}
-.av-m{background:linear-gradient(135deg,#3C414B,#54606D)}
-.av-f{background:linear-gradient(135deg,#FA4B00,#FF6A2A)}
+.av-m{background:linear-gradient(135deg,var(--slate-500),var(--slate-400))}
+.av-f{background:linear-gradient(135deg,var(--obsidian-orange),var(--obsidian-orange-hover))}
 .c-name{font-size:14px;font-weight:600;letter-spacing:-.1px;color:var(--text);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .c-role{font-size:11px;color:var(--text-muted);margin-top:2px;font-weight:500}
 .c-tags{display:flex;gap:5px;align-items:center;flex-shrink:0;flex-wrap:wrap}
@@ -182,7 +187,10 @@ a{color:inherit;text-decoration:none}
 .cc a{color:var(--info);font-weight:500}
 .cc a:hover{color:var(--obsidian-orange)}
 .cc .nc{color:var(--text-muted);font-weight:400;font-size:11px}
-.cc.has svg{fill:var(--positive)}.cc:not(.has) svg{fill:var(--text-muted)}
+.cc.has svg{fill:var(--positive)}
+.cc.has.cc-li svg{fill:var(--info)} /* LinkedIn → bleu DS, pas vert */
+.cc.has.cc-li a{color:var(--info)}
+.cc:not(.has) svg{fill:var(--text-muted)}
 .cc-sep{width:1px;height:14px;background:var(--border)}
 
 /* Card body */
@@ -270,7 +278,6 @@ a{color:inherit;text-decoration:none}
       <div class="mono-mark">P</div>
       <div class="brand-wm">
         <div class="row"><span class="slate">PROSPECT</span><span class="orange">FLOW</span></div>
-        <div class="sub">obsidian capital</div>
       </div>
     </div>
 
@@ -364,8 +371,8 @@ a{color:inherit;text-decoration:none}
 
       <div class="kpis">
         <div class="kpi k-ac"><div class="kpi-l">Prospects</div><div class="kpi-v" id="k1">0</div></div>
-        <div class="kpi k-gn"><div class="kpi-l">Enrichis (LinkedIn)</div><div class="kpi-v" id="k2">0</div></div>
-        <div class="kpi k-bl"><div class="kpi-l">Poussés Airtable</div><div class="kpi-v" id="k4">0</div></div>
+        <div class="kpi k-bl"><div class="kpi-l">Enrichis (LinkedIn)</div><div class="kpi-v" id="k2">0</div></div>
+        <div class="kpi k-gn"><div class="kpi-l">Poussés Airtable</div><div class="kpi-v" id="k4">0</div></div>
         <div class="kpi"><div class="kpi-l">Affichés</div><div class="kpi-v" id="k3">0</div></div>
       </div>
 
@@ -918,17 +925,19 @@ function render(){
     const cap=(Number(p.capital)||0).toLocaleString('fr-FR')+' €';
     const av=p.sexe==='F'?'av av-f':'av av-m';
     const hasE=!!p.email,hasT=!!p.tel,hasL=!!p.linkedin;
-    const enriched=hasE||hasT||hasL;
     const birth=[p.naissance,p.ville_naissance,p.pays_naissance].filter(Boolean).join(' — ');
-    const via=p.via_pm?` <span style="font:600 9px Inter;color:var(--am)">via ${esc(p.via_pm)}</span>`:'';
-    const conf=p._liScore?`<span class="conf ${p._liScore>=70?'conf-hi':p._liScore>=40?'conf-mid':'conf-lo'}">🎯${p._liScore}%</span>`:'';
-    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank">LinkedIn ↗</a>`:`<a href="javascript:void(0)" onclick="pasteLI(${i})" style="color:var(--ac);font-weight:600" title="Coller l'URL LinkedIn">📋 Coller URL</a>`;
+    const via=p.via_pm?` <span style="font:600 10px Inter;color:var(--warning)">via ${esc(p.via_pm)}</span>`:'';
+    // Score LinkedIn caché du visible, gardé en tooltip sur le lien
+    const liTitle=p._liScore?` title="Match LinkedIn ${p._liScore}%"`:'';
+    const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank"${liTitle}>LinkedIn ↗</a>`:`<a href="javascript:void(0)" onclick="pasteLI(${i})" style="color:var(--obsidian-orange);font-weight:600" title="Coller l'URL LinkedIn">📋 Coller URL</a>`;
     const pappersUrl=`https://www.pappers.fr/entreprise/${p.siren}`;
     const webH=p.website?`<a href="https://${esc(p.website)}" target="_blank">${esc(p.website)}</a>`:'';
+    // État de la card: pushed (vert) > skip (muted) > topush (orange)
+    const cardState=p._skip?'state-skip':(p._pushed?'state-pushed':'state-topush');
 
-    return`<div class="card${enriched?' enriched':''}">
+    return`<div class="card ${cardState}">
 <div class="c-top">
-  <div class="c-id"><div class="${av}">${inits(p.nom)}</div><div><div class="c-name">${esc(p.nom)}${via} ${conf}</div><div class="c-role">${esc(p.qualite)}</div></div></div>
+  <div class="c-id"><div class="${av}">${inits(p.nom)}</div><div><div class="c-name">${esc(p.nom)}${via}</div><div class="c-role">${esc(p.qualite)}</div></div></div>
   <div class="c-tags"><span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
 </div>
 <div class="c-contact">
@@ -936,7 +945,7 @@ function render(){
   <div class="cc-sep"></div>
   <div class="cc${hasT?' has':''}"><svg viewBox="0 0 16 16"><path d="M3.654 1.328a.678.678 0 0 0-1.015-.063L1.605 2.3c-.483.484-.661 1.169-.45 1.77a17.568 17.568 0 0 0 4.168 6.608 17.569 17.569 0 0 0 6.608 4.168c.601.211 1.286.033 1.77-.45l1.034-1.034a.678.678 0 0 0-.063-1.015l-2.307-1.794a.678.678 0 0 0-.58-.122l-2.19.547a1.745 1.745 0 0 1-1.657-.459L5.482 8.062a1.745 1.745 0 0 1-.46-1.657l.548-2.19a.678.678 0 0 0-.122-.58L3.654 1.328z"/></svg>${hasT?`<a href="tel:${esc(p.tel)}">${esc(p.tel)}</a>`:'<span class="nc">—</span>'}</div>
   <div class="cc-sep"></div>
-  <div class="cc${hasL?' has':''}"><svg viewBox="0 0 16 16"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016a5.54 5.54 0 0 1 .016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225h2.4z"/></svg>${lnk}</div>
+  <div class="cc cc-li${hasL?' has':''}"><svg viewBox="0 0 16 16"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016a5.54 5.54 0 0 1 .016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225h2.4z"/></svg>${lnk}</div>
   <div class="cc-sep"></div>
   <div class="cc has"><svg viewBox="0 0 16 16"><path d="M4 .5a.5.5 0 0 0-1 0V1H2a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-1V.5a.5.5 0 0 0-1 0V1H4V.5z"/></svg><a href="${esc(pappersUrl)}" target="_blank">Pappers ↗</a></div>
   ${webH?`<div class="cc-sep"></div><div class="cc has"><svg viewBox="0 0 16 16"><path d="M0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8z"/></svg>${webH}</div>`:''}
@@ -963,7 +972,7 @@ function render(){
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
-  <button class="btn-sm btn-ghost" onclick="pushAirtable(${i})" style="${p._pushed?'color:var(--gn)':''}" title="${p._pushed?'Re-push pour mettre à jour Airtable':'Pousser sur Airtable'}">${p._pushed?'🔄 AT':'📤'}</button>
+  <button class="btn-sm ${p._pushed?'btn-ghost':'btn-primary'}" onclick="pushAirtable(${i})" style="${p._pushed?'color:var(--positive)':''}" title="${p._pushed?'Déjà poussé — clic pour update':'Pousser sur Airtable'}">${p._pushed?'🔄 AT':'📤 Pousser'}</button>
   <button class="btn-sm btn-ghost" onclick="skipProspect(${i})" title="${p._skip?'Ré-afficher':'Masquer (hors-scope)'}" style="${p._skip?'color:var(--am)':''}">${p._skip?'↩️':'❌'}</button>
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
 </div>
