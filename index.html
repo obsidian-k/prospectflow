@@ -367,8 +367,6 @@ a{color:inherit;text-decoration:none}
     <div class="sb-go">
       <button class="btn btn-primary" id="goBtn" onclick="currentPage=1;lastTotal=0;run()">Rechercher &amp; Enrichir</button>
       <button class="btn" id="moreBtn" onclick="loadMore()" style="display:none;width:100%;justify-content:center;margin-top:6px;font-size:12px">Charger plus</button>
-      <button class="btn" id="sigBtn" onclick="importSignals()" style="width:100%;justify-content:center;margin-top:6px;font-size:12px" title="Charger signals.json (radar hebdo) dans Pending">📡 Importer signaux radar</button>
-      <input type="file" id="sigFile" accept=".json,application/json" style="display:none" onchange="onSignalsFile(event)">
     </div>
 
     <div class="sb-s no-border" id="histSection" style="display:none">
@@ -515,7 +513,7 @@ function save(){
 }
 function load(){try{const d=localStorage.getItem('pf5');if(d)all=JSON.parse(d)}catch(e){}
   // Migration : les prospects pré-triage (sans _cible) étaient tous "actifs" → Cibles
-  for(const p of all){if(p._cible===undefined&&!p._signal)p._cible=true}}
+  for(const p of all){if(p._cible===undefined)p._cible=true}}
 
 // ── DRIVE AUTO-SAVE (file picker once, ensuite tout est synchro auto) ──
 let _fileHandle=null,_syncStatus='unlinked'; // 'unlinked' | 'needs-permission' | 'linked'
@@ -840,10 +838,10 @@ function mkP(co,dir,q){
     naf:co.code_naf||'',naf_lib:co.libelle_code_naf||'',
     linkedin:'',email:'',tel:'',website:'',nb_mandats:0,mandats:'',
     finances:Array.isArray(co.finances)?co.finances.slice(0,3):[],
-    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',_done:false,_cible:true};
+    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',_done:false,_cible:false};
 }
 
-// ── Extraction dirigeants depuis une fiche /entreprise (partagé run() + enrichOne()) ──
+// ── Extraction dirigeants depuis une fiche /entreprise ──
 async function extractDirigeants(d){
   const out=[];
   const reps=d.representants||[];
@@ -859,26 +857,8 @@ async function extractDirigeants(d){
   return out;
 }
 
-// ── Construit un placeholder "signal radar" (pending, non enrichi) ──
-function mkSignal(sig){
-  const dir0=(sig.dirigeants&&sig.dirigeants[0])||'';
-  const nom=dir0.replace(/\s*\(\d+\).*$/,'').trim();
-  return{_k:'sig_'+sig.siren,_signal:true,_cible:false,_done:false,
-    nom,qualite:sig.signal_label||sig.famille||'Signal radar',sexe:'',
-    naissance:'',ville_naissance:'',pays_naissance:'',adr_perso:'',
-    societe:sig.societe||'',siren:sig.siren||'',forme:'',date_crea:'',
-    capital:Number(sig.capital)||0,
-    adr_siege:[sig.cp,sig.ville].filter(Boolean).join(' '),
-    naf:sig.naf||'',naf_lib:'',linkedin:'',email:'',tel:'',website:'',
-    nb_mandats:0,mandats:(sig.dirigeants||[]).join(', '),finances:[],
-    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',
-    _score:sig.score||0,_hot:!!sig.hot,signal_label:sig.signal_label||'',
-    famille:sig.famille||'',_sigDate:sig.date||'',bodacc_url:sig.bodacc_url||'',
-    cession:sig.famille==='cession'?{date:sig.date||'',type:sig.signal_label||'Cession',parties:sig.parties||[]}:null};
-}
-
 // ═══════════════════════════════════════
-// PIPELINE — 4 étapes, cap dur MAX_RESULTS par clic
+// PIPELINE — recherche manuelle, cap dur MAX_RESULTS par clic
 // 1. Source (Pappers Holdings OU BODACC Cessions) → SIRENs
 // 2. /entreprise → dirigeants (cache 30j invisible)
 // 3. Mandats + LinkedIn (matching strict, seuil 60)
@@ -897,7 +877,7 @@ async function run(){
     // ── 1. SOURCE → SIRENs ──
     let sirens=[];
     if(isCession){
-      g.innerHTML=ldr('1/4 — BODACC cessions…',5);
+      g.innerHTML=ldr('1/2 — BODACC cessions…',5);
       const bp=new URLSearchParams({dataset:'annonces-commerciales',rows:String(MAX_RESULTS*4),sort:'-dateparution'});
       bp.append('refine.familleavis_lib','Ventes et cessions');
       if(v('s_dept'))bp.append('refine.departement',v('s_dept'));
@@ -930,7 +910,7 @@ async function run(){
         }
       }
     } else {
-      g.innerHTML=ldr('1/4 — Pappers…',5);
+      g.innerHTML=ldr('1/2 — Pappers…',5);
       const formes=[...document.querySelectorAll('#chips .chip.on')].map(c=>c.dataset.v);
       const p=new URLSearchParams({api_token:PKEY,par_page:String(MAX_RESULTS),page:String(currentPage),entreprise_cessee:'false'});
       if(v('s_naf'))p.set('code_naf',v('s_naf'));if(v('s_dept'))p.set('departement',v('s_dept'));
@@ -946,7 +926,7 @@ async function run(){
     if(!sirens.length){g.innerHTML='<div class="empty"><h3>Aucun résultat</h3><p>Élargissez vos critères.</p></div>';return}
 
     // ── 2. DÉTAILS + DIRIGEANTS ──
-    g.innerHTML=ldr(`2/4 — Détails (${sirens.length} SIREN)…`,15);
+    g.innerHTML=ldr(`2/2 — Détails (${sirens.length} SIREN)…`,15);
     const newP=[];let kept=0;
     for(let i=0;i<sirens.length;i++){
       if(kept>=MAX_RESULTS)break;
@@ -955,7 +935,7 @@ async function run(){
       if(isCession){const cap=Number(d.capital)||0;if(cmin&&cap<cmin)continue;if(cmax&&cap>cmax)continue}
       kept++;
       newP.push(...await extractDirigeants(d));
-      g.innerHTML=ldr(`2/4 — ${kept}/${MAX_RESULTS} retenues…`,15+Math.round((i/sirens.length)*20));
+      g.innerHTML=ldr(`2/2 — ${kept}/${MAX_RESULTS} retenues…`,15+Math.round((i/sirens.length)*20));
     }
     if(!newP.length){g.innerHTML='<div class="empty"><h3>Aucun dirigeant identifiable</h3><p>Aucune entreprise ne matche vos critères.</p></div>';return}
 
@@ -964,41 +944,17 @@ async function run(){
 
     const keys=new Set(all.map(p=>p._k));let added=0;
     for(const p of newP){if(!keys.has(p._k)){all.push(p);keys.add(p._k);added++}}
-    const toE=all.filter(p=>!p._done&&p.nom);
 
-    // ── 3. MANDATS + LINKEDIN ──
-    if(toE.length){
-      g.innerHTML=ldr(`3/4 — Mandats…`,40);
-      for(let i=0;i<toE.length;i++){
-        const p=toE[i];try{const parts=splitName(p.nom);
-          const dr=await ftMandats(parts.fn,parts.ln).catch(()=>null);
-          if(dr&&dr.resultats){let tot=0;const names=[];for(const r of dr.resultats){tot+=r.nb_entreprises_total||0;for(const e of(r.entreprises||[])){if(e.dirigeant_actuel)names.push(e.nom_entreprise);if(!p._bestCo&&e.dirigeant_actuel&&!e.entreprise_cessee&&e.effectif_max>0&&!/SCI|holding/i.test(e.nom_entreprise)){p._bestCo=e.nom_entreprise;p._bestCoSiren=e.siren}}}
-          p.nb_mandats=tot;p.mandats=[...new Set(names)].filter(n=>n.toUpperCase()!==p.societe.toUpperCase()).slice(0,5).join(', ')}}catch(e){}
-        g.innerHTML=ldr(`3/4 — Mandats ${i+1}/${toE.length}…`,40+Math.round((i/toE.length)*15));
-      }
-      g.innerHTML=ldr(`3/4 — LinkedIn…`,55);
-      for(let i=0;i<toE.length;i++){
-        const p=toE[i],ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';
-        try{if(!p.linkedin)await findLinkedIn(p,ville)}catch(e){}
-        // PAS de scan intérêts auto (économie crédits) — utiliser bouton 🎯 sur la card si voulu
-        g.innerHTML=ldr(`3/4 — LinkedIn ${i+1}/${toE.length}…`,55+Math.round((i/toE.length)*25));
-      }
-      toE.forEach(p=>p._done=true);
-    }
-
-    // ── 4. BODACC events ──
-    g.innerHTML=ldr('4/4 — BODACC events…',85);
-    const allSirens=[...new Set(all.map(p=>p.siren))];
-    for(const bc of chunk(allSirens,10)){
-      const results=await Promise.all(bc.map(s=>fetch(`${BAPI}?dataset=annonces-commerciales&q=${s}&sort=-dateparution&rows=3`).then(r=>r.json()).catch(()=>({records:[]}))));
-      bc.forEach((s,i)=>{const evts=(results[i]&&results[i].records||[]).map(r=>{const f=r.fields||{};return{date:f.dateparution||'',type:f.familleavis||'',label:f.familleavis_lib||''}});all.filter(p=>p.siren===s).forEach(p=>p.bodacc=evts)});
-    }
-
-    save();filter();
+    // ── LAZY (anti-gâchi) : on N'enrichit PAS LinkedIn/mandats/BODACC sur tout le lot.
+    //    Les résultats arrivent en ⏳ Pending. Promouvoir en 🎯 Cible déclenche l'enrichissement
+    //    (uniquement sur les cibles choisies → zéro crédit gaspillé sur les fiches qu'on jette).
+    pF='pending';
+    document.querySelectorAll('#pills .pill').forEach(x=>x.classList.remove('on'));
+    const pend=document.querySelector('#pills .pill[data-f="pending"]');if(pend)pend.classList.add('on');
+    $('q').value='';save();filter();
     const addedP=all.slice(all.length-added);
     addHist(added,addedP);updateMoreBtn();
-    const enriched=all.filter(p=>p.linkedin).length;
-    toast(`${added} prospect${added>1?'s':''} · ${enriched} avec LinkedIn`);
+    toast(`${added} prospect${added>1?'s':''} → ⏳ Pending · sélectionne tes 🎯 cibles pour enrichir`);
   }catch(e){g.innerHTML=`<div class="empty"><h3>Erreur</h3><p>${esc(e.message)}</p></div>`}finally{btn.disabled=false}
 }
 
@@ -1037,18 +993,17 @@ function render(){
     const webH=p.website?`<a href="https://${esc(p.website)}" target="_blank">${esc(p.website)}</a>`:'';
     // État de la card: skip (muted) > pushed (vert) > cible (orange) > pending (neutre)
     const cardState=p._skip?'state-skip':(p._pushed?'state-pushed':(p._cible?'state-cible':'state-pending'));
-    const isSig=!!p._signal;
     const selOn=selSet.has(p._k);
     const selBox=selMode?`<div class="selbox${selOn?' on':''}" onclick="toggleSel(${i});event.stopPropagation()">${selOn?'✓':''}</div>`:'';
-    const star=`<span class="star" onclick="toggleCible(${i})" title="${p._cible?'Retirer des cibles':'Marquer comme cible'}">${p._cible?'⭐':'☆'}</span>`;
-    const sigBadge=isSig?`<span class="sig-badge${p._hot?'':' warm'}" title="Signal radar — score ${p._score||0}">📡 ${p._score||0}</span>`:'';
+    const star=`<span class="star" onclick="toggleCible(${i})" title="${p._cible?'Retirer des cibles':'Promouvoir en cible — enrichit la fiche'}">${p._cible?'⭐':'☆'}</span>`;
+    const todo=!p._done?`<span class="sig-badge warm" title="Non enrichi — promouvoir en cible ou cliquer 🔍">à enrichir</span>`:'';
     const nameTxt=esc(p.nom)||'<span style="color:var(--text-muted);font-style:italic">dirigeant à enrichir</span>';
 
-    return`<div class="card ${cardState}${isSig?' is-signal':''}${selMode?' selmode':''}${selOn?' sel-on':''}">
+    return`<div class="card ${cardState}${!p._done?' is-signal':''}${selMode?' selmode':''}${selOn?' sel-on':''}">
 ${selBox}
 <div class="c-top">
   <div class="c-id"><div class="${av}">${inits(p.nom||p.societe)}</div><div><div class="c-name">${star} ${nameTxt}${via}</div><div class="c-role">${esc(p.qualite)}</div></div></div>
-  <div class="c-tags">${sigBadge}<span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
+  <div class="c-tags">${todo}<span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
 </div>
 <div class="c-contact">
   <div class="cc${hasE?' has':''}"><svg viewBox="0 0 16 16"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2z"/></svg>${hasE?`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`:'<span class="nc">—</span>'}</div>
@@ -1083,8 +1038,7 @@ ${selBox}
 </div>
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
-  ${isSig?`<button class="btn-sm btn-primary" onclick="enrichOne(${i})" title="Enrichir via Pappers : dirigeants + mandats + LinkedIn">🔍 Enrichir</button>`:''}
-  ${isSig&&p.bodacc_url?`<a class="btn-sm btn-ghost" href="${esc(p.bodacc_url)}" target="_blank" title="Annonce BODACC source" style="text-decoration:none">📄</a>`:''}
+  ${!p._done?`<button class="btn-sm btn-primary" onclick="enrichProspectBtn(${i})" title="Enrichir : mandats + LinkedIn + BODACC">🔍 Enrichir</button>`:''}
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
   <button class="btn-sm btn-ghost" onclick="genNarratif(${i})" title="${p.narratif?'Régénérer':'Générer'} le narratif patrimonial (IA)" style="${p.narratif?'color:var(--positive)':''}">🧠</button>
   <button class="btn-sm btn-ghost" onclick="enrichContact(${i})" title="Enrichir email/coordonnées via Dropcontact (à la demande)">📇</button>
@@ -1156,10 +1110,16 @@ function skipProspect(i){
   p._skip=true;save();filter();toast(`❌ ${p.nom} masqué`);
 }
 // ── TRIAGE CIBLE / PENDING ──
-function toggleCible(i){
+async function toggleCible(i){
   const p=all[i];p._cible=!p._cible;
   if(p._cible&&p._skip)p._skip=false; // promouvoir une cible la dé-skippe
-  save();filter();toast(p._cible?`🎯 ${p.nom||p.societe} → Cibles`:`⏳ ${p.nom||p.societe} → Pending`);
+  save();filter();
+  // Anti-gâchi : on enrichit (LinkedIn/mandats/BODACC) UNIQUEMENT au moment où ça devient une cible
+  if(p._cible&&!p._done){
+    toast(`🎯 ${p.nom||p.societe} → Cible · enrichissement…`);
+    const ok=await enrichProspect(p);save();filter();
+    if(ok)toast(p.linkedin?`✓ ${p.nom} enrichi · LinkedIn ✓`:`✓ ${p.nom} enrichi`);
+  }else toast(p._cible?`🎯 ${p.nom||p.societe} → Cibles`:`⏳ ${p.nom||p.societe} → Pending`);
 }
 
 // ── MODE SÉLECTION MULTIPLE ──
@@ -1172,17 +1132,23 @@ function toggleSel(i){const k=all[i]._k;if(selSet.has(k))selSet.delete(k);else s
 function selAll(){vis.forEach(p=>selSet.add(p._k));updateSelbar();render()}
 function selNone(){selSet.clear();updateSelbar();render()}
 function updateSelbar(){const bar=$('selbar'),c=$('selCnt');if(c)c.textContent=selSet.size;if(bar)bar.classList.toggle('on',selMode)}
-function bulkSet(state){
+async function bulkSet(state){
   if(!selSet.size){toast('Aucune sélection');return}
-  let n=0;
+  let n=0;const toEnrich=[];
   for(const p of all){if(!selSet.has(p._k))continue;n++;
-    if(state==='cible'){p._cible=true;p._skip=false}
+    if(state==='cible'){if(!p._cible&&!p._done)toEnrich.push(p);p._cible=true;p._skip=false}
     else if(state==='pending'){p._cible=false;p._skip=false}
     else if(state==='skip'){p._skip=true;p._cible=false}
   }
   selSet.clear();save();filter();updateSelbar();
   const lbl=state==='cible'?'🎯 Cibles':state==='pending'?'⏳ Pending':'❌ Skip';
   toast(`${n} prospect(s) → ${lbl}`);
+  // Anti-gâchi : enrichit en série uniquement les cibles fraîchement promues
+  if(toEnrich.length){
+    toast(`🔗 Enrichissement de ${toEnrich.length} cible(s)…`);
+    for(let i=0;i<toEnrich.length;i++){await enrichProspect(toEnrich[i]);save();filter()}
+    toast(`✓ ${toEnrich.length} cible(s) enrichie(s)`);
+  }
 }
 
 function clearAll(){if(confirm('Supprimer tous les prospects ?')){all=[];selSet.clear();save();filter();toast('Réinitialisé')}}
@@ -1228,71 +1194,33 @@ function showHist(i){
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// IMPORT SIGNAUX RADAR (signals.json) → Pending, puis triage + Enrichir à la demande
+// ENRICHISSEMENT PARESSEUX (anti-gâchi) — mandats + LinkedIn + BODACC sur UNE fiche déjà sourcée.
+// Déclenché à la promotion en 🎯 Cible (ou bouton 🔍). Jamais sur les fiches Pending qu'on jette.
 // ══════════════════════════════════════════════════════════════════════════
-async function importSignals(){
-  // 1) tente signals.json servi à côté de la page (cas http/serveur) ; 2) sinon file picker (cas file://)
+async function enrichProspect(p){
+  if(!p||p._done||p._enriching)return false;
+  if(!checkKeys())return false;
+  p._enriching=true;
   try{
-    const r=await fetch('signals.json',{cache:'no-store'});
-    if(r.ok){const j=await r.json();ingestSignals(j);return}
-  }catch(e){}
-  $('sigFile').click();
-}
-function onSignalsFile(ev){
-  const f=ev.target.files&&ev.target.files[0];if(!f)return;
-  const rd=new FileReader();
-  rd.onload=()=>{try{ingestSignals(JSON.parse(rd.result))}catch(e){toast('❌ signals.json invalide')}};
-  rd.readAsText(f);ev.target.value='';
-}
-function ingestSignals(j){
-  const sigs=Array.isArray(j)?j:(j.signals||[]);
-  if(!sigs.length){toast('Aucun signal dans le fichier');return}
-  const bySiren=new Set(all.map(p=>p.siren).filter(Boolean));
-  let added=0;
-  for(const s of sigs){
-    if(!s.siren||bySiren.has(s.siren))continue; // déjà importé ou déjà prospect enrichi
-    all.push(mkSignal(s));bySiren.add(s.siren);added++;
-  }
-  save();
-  // bascule sur l'onglet Pending pour trier les nouveaux signaux
-  pF='pending';
-  document.querySelectorAll('#pills .pill').forEach(p=>p.classList.remove('on'));
-  const pend=document.querySelector('#pills .pill[data-f="pending"]');if(pend)pend.classList.add('on');
-  $('q').value='';filter();
-  // historique (garde la trace de l'import)
-  hist.unshift({label:`📡 Radar ${(j.depts||[]).join(',')} ${j.window_days?j.window_days+'j':''}`.trim(),count:added,params:{},prospects:[],date:new Date().toLocaleDateString('fr-FR')});
-  if(hist.length>20)hist=hist.slice(0,20);saveHist();renderHist();
-  toast(`📡 ${added} signal(aux) → Pending${added<sigs.length?` · ${sigs.length-added} déjà présents`:''}`);
-}
-
-// Enrichit un signal pending : /entreprise → dirigeants → mandats + LinkedIn → BODACC, puis → Cibles
-async function enrichOne(i){
-  const sig=all[i];if(!sig||!sig.siren){toast('Pas de SIREN');return}
-  if(!checkKeys())return;
-  const siren=sig.siren;
-  toast('🔍 Pappers : dirigeants…');
-  const d=await ftEntreprise(siren).catch(()=>null);
-  if(!d){toast('❌ Pappers : société introuvable ou quota épuisé');return}
-  const newP=await extractDirigeants(d);
-  if(!newP.length){toast('❌ Aucun dirigeant identifiable sur ce SIREN');return}
-  for(const p of newP){p._cible=true;if(sig.cession)p.cession=sig.cession}
-  const keys=new Set(all.map(p=>p._k));const ins=[];
-  for(const p of newP){if(!keys.has(p._k)){all.push(p);keys.add(p._k);ins.push(p)}}
-  toast(`🔗 Mandats + LinkedIn (${ins.length})…`);
-  for(const p of ins){
+    // Mandats Pappers
     try{const parts=splitName(p.nom);const dr=await ftMandats(parts.fn,parts.ln).catch(()=>null);
       if(dr&&dr.resultats){let tot=0;const names=[];
         for(const r of dr.resultats){tot+=r.nb_entreprises_total||0;for(const e of(r.entreprises||[])){if(e.dirigeant_actuel)names.push(e.nom_entreprise);if(!p._bestCo&&e.dirigeant_actuel&&!e.entreprise_cessee&&e.effectif_max>0&&!/SCI|holding/i.test(e.nom_entreprise)){p._bestCo=e.nom_entreprise;p._bestCoSiren=e.siren}}}
         p.nb_mandats=tot;p.mandats=[...new Set(names)].filter(n=>n.toUpperCase()!==(p.societe||'').toUpperCase()).slice(0,5).join(', ')}}catch(e){}
+    // LinkedIn (Serper, matching strict)
     try{if(!p.linkedin){const ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';await findLinkedIn(p,ville)}}catch(e){}
-    p._done=true;
-  }
-  try{const rr=await fetch(`${BAPI}?dataset=annonces-commerciales&q=${siren}&sort=-dateparution&rows=3`).then(r=>r.json()).catch(()=>({records:[]}));
-    const evts=(rr.records||[]).map(r=>{const f=r.fields||{};return{date:f.dateparution||'',type:f.familleavis||'',label:f.familleavis_lib||''}});
-    ins.forEach(p=>p.bodacc=evts);}catch(e){}
-  const idx=all.indexOf(sig);if(idx>=0)all.splice(idx,1);selSet.delete(sig._k);
-  save();filter();
-  toast(`✓ ${ins.length} dirigeant(s) enrichi(s) → Cibles`);
+    // BODACC events
+    try{const rr=await fetch(`${BAPI}?dataset=annonces-commerciales&q=${p.siren}&sort=-dateparution&rows=3`).then(r=>r.json()).catch(()=>({records:[]}));
+      p.bodacc=(rr.records||[]).map(r=>{const f=r.fields||{};return{date:f.dateparution||'',type:f.familleavis||'',label:f.familleavis_lib||''}});}catch(e){}
+    p._done=true;return true;
+  }finally{p._enriching=false}
+}
+// Bouton 🔍 sur une fiche (enrichissement manuel, sans changer le statut)
+async function enrichProspectBtn(i){
+  const p=all[i];if(!p)return;if(p._done){toast('Déjà enrichi');return}
+  toast(`🔗 Enrichissement de ${p.nom}…`);
+  const ok=await enrichProspect(p);if(ok===false)return;
+  save();filter();toast(p.linkedin?`✓ ${p.nom} · LinkedIn trouvé`:`✓ ${p.nom} enrichi · pas de LinkedIn`);
 }
 
 // ── PUSH AIRTABLE (UPSERT : POST si nouveau, PATCH si existe avec nouvelles données) ──
