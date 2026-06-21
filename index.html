@@ -183,6 +183,15 @@ a{color:inherit;text-decoration:none}
 /* Legacy alias — gardé pour compat */
 .card.enriched,.card.featured{border-left:3px solid var(--obsidian-orange)}
 
+/* Badge âge (pastille 60+/70+) + score de chaleur */
+.age-chip{padding:3px 9px;border-radius:var(--radius-full);font-family:var(--font-mono);font-size:11px;font-weight:600;background:var(--surface-hover);color:var(--text-muted)}
+.age-chip.hot{background:var(--obsidian-orange-dim);color:var(--obsidian-orange)}
+.age-chip.hot2{background:var(--obsidian-orange);color:#fff}
+.heat{padding:3px 8px;border-radius:var(--radius-full);font-family:var(--font-mono);font-size:10px;font-weight:600}
+.heat-hi{background:var(--obsidian-orange-dim);color:var(--obsidian-orange)}
+.heat-mid{background:var(--surface-hover);color:var(--text-body)}
+.heat-lo{background:var(--surface-hover);color:var(--text-muted)}
+
 /* Sélection multiple */
 .selbox{position:absolute;top:10px;left:10px;width:22px;height:22px;border-radius:6px;border:2px solid var(--border-strong);background:var(--surface);cursor:pointer;display:grid;place-items:center;font-size:13px;color:#fff;z-index:5;transition:all var(--t)}
 .selbox.on{background:var(--obsidian-orange);border-color:var(--obsidian-orange)}
@@ -974,7 +983,27 @@ function filter(){
     if(pF==='⚡3+')return(parseInt(p.nb_mandats)||0)>=3;
     return true;
   });
+  // Tri par chaleur décroissante : les meilleurs prospects en haut (surtout pour trier le Pending)
+  vis.sort((a,b)=>heatScore(b)-heatScore(a));
   render();
+}
+// ── SCORE DE CHALEUR (client, 0 API) : âge dirigeant + capital + mandats + liquidité ──
+function prospectAge(p){
+  const m=String(p.naissance||'').match(/\b(19|20)\d{2}\b/);
+  if(!m)return 0;
+  const age=new Date().getFullYear()-parseInt(m[0],10);
+  return(age>0&&age<110)?age:0;
+}
+function heatScore(p){
+  let s=30;
+  const a=prospectAge(p);
+  if(a>=70)s+=30;else if(a>=65)s+=25;else if(a>=60)s+=18;else if(a>=55)s+=8;
+  const cap=Number(p.capital)||0;
+  if(cap>=1e6)s+=15;else if(cap>=5e5)s+=10;else if(cap>=1e5)s+=5;
+  if((parseInt(p.nb_mandats)||0)>=3)s+=8;
+  if(p.cession)s+=8;        // évènement de liquidité (cession en cours)
+  if(p.linkedin)s+=4;       // contactable
+  return Math.min(s,100);
 }
 function render(){
   const g=$('grid');kpis();
@@ -997,13 +1026,17 @@ function render(){
     const selBox=selMode?`<div class="selbox${selOn?' on':''}" onclick="toggleSel(${i});event.stopPropagation()">${selOn?'✓':''}</div>`:'';
     const star=`<span class="star" onclick="toggleCible(${i})" title="${p._cible?'Retirer des cibles':'Promouvoir en cible — enrichit la fiche'}">${p._cible?'⭐':'☆'}</span>`;
     const todo=!p._done?`<span class="sig-badge warm" title="Non enrichi — promouvoir en cible ou cliquer 🔍">à enrichir</span>`:'';
+    const age=prospectAge(p);
+    const ageChip=age?`<span class="age-chip${age>=70?' hot2':age>=60?' hot':''}" title="Âge estimé du dirigeant">${age} ans</span>`:'';
+    const heat=heatScore(p);
+    const heatChip=`<span class="heat heat-${heat>=70?'hi':heat>=50?'mid':'lo'}" title="Score de chaleur (âge, capital, mandats, liquidité)">🔥 ${heat}</span>`;
     const nameTxt=esc(p.nom)||'<span style="color:var(--text-muted);font-style:italic">dirigeant à enrichir</span>';
 
     return`<div class="card ${cardState}${!p._done?' is-signal':''}${selMode?' selmode':''}${selOn?' sel-on':''}">
 ${selBox}
 <div class="c-top">
   <div class="c-id"><div class="${av}">${inits(p.nom||p.societe)}</div><div><div class="c-name">${star} ${nameTxt}${via}</div><div class="c-role">${esc(p.qualite)}</div></div></div>
-  <div class="c-tags">${todo}<span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
+  <div class="c-tags">${todo}${ageChip}${heatChip}<span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
 </div>
 <div class="c-contact">
   <div class="cc${hasE?' has':''}"><svg viewBox="0 0 16 16"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2z"/></svg>${hasE?`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`:'<span class="nc">—</span>'}</div>
@@ -1145,6 +1178,8 @@ async function bulkSet(state){
   toast(`${n} prospect(s) → ${lbl}`);
   // Anti-gâchi : enrichit en série uniquement les cibles fraîchement promues
   if(toEnrich.length){
+    // Garde-fou coût : au-delà de 2 cibles, on confirme (≈ 1 appel LinkedIn + mandats par cible)
+    if(toEnrich.length>=3&&!confirm(`Enrichir ${toEnrich.length} cibles maintenant ?\n(~${toEnrich.length} appels LinkedIn + mandats Pappers, facturés)\n\nAnnuler = les garder en cibles, enrichir plus tard via 🔍.`))return;
     toast(`🔗 Enrichissement de ${toEnrich.length} cible(s)…`);
     for(let i=0;i<toEnrich.length;i++){await enrichProspect(toEnrich[i]);save();filter()}
     toast(`✓ ${toEnrich.length} cible(s) enrichie(s)`);
