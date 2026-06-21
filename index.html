@@ -372,7 +372,7 @@ a{color:inherit;text-decoration:none}
         <div class="badge-api" id="b_gdelt" title="Veille presse mondiale — gratuite, sans clé"><i></i>GDELT ∞</div>
         <div class="badge-api off" id="b_claude" title="Narratif patrimonial IA (clé Anthropic)"><i></i>Narratif IA</div>
         <div class="badge-api off" id="b_airtable" title="Push CRM (PAT Airtable)"><i></i>Airtable</div>
-        <div class="badge-api idle" id="b_kaspr" title="Enrichissement mobiles/emails — branché, à activer (Kaspr) en septembre"><i></i>Kaspr ◐</div>
+        <div class="badge-api idle" id="b_dropcontact" title="Enrichissement email/coordonnées — branché, activation prévue septembre"><i></i>Dropcontact ◐</div>
         <button class="btn" id="syncBtn" onclick="syncBtnClick()" title="Auto-save Drive">🔗 Lier Drive</button>
       </div>
     </header>
@@ -422,7 +422,9 @@ a{color:inherit;text-decoration:none}
     <input id="i_atkey" type="text" placeholder="patXXXXXX..." autocomplete="off" spellcheck="false">
     <label>Clé Anthropic (optionnel — pour le 🧠 Narratif patrimonial IA)</label>
     <input id="i_akey" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-    <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">🟠 <b>Kaspr</b> (mobiles/emails perso) est branché dans le code mais désactivé — tu colleras la clé en septembre, aucun coût d'ici là.</p>
+    <label>Clé Dropcontact (optionnel — bouton 📇 enrichissement email/coordonnées)</label>
+    <input id="i_dkey" type="text" placeholder="xxxxxxxx-xxxx-xxxx-..." autocomplete="off" spellcheck="false">
+    <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">🟠 <b>Dropcontact</b> est branché : la clé reste dans ce navigateur, et l'enrichissement ne se déclenche qu'au clic sur 📇 (aucun coût tant que tu ne cliques pas).</p>
     <div class="modal-act">
       <button class="btn" onclick="closeSettings()">Annuler</button>
       <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
@@ -437,7 +439,7 @@ let PKEY=localStorage.getItem('pf_pkey')||'';
 let SKEY=localStorage.getItem('pf_skey')||'';
 let ATKEY=localStorage.getItem('pf_atkey')||''; // Airtable PAT pour push
 let AKEY=localStorage.getItem('pf_akey')||'';   // Anthropic — narratif patrimonial (optionnel)
-let KKEY=localStorage.getItem('pf_kkey')||'';   // Kaspr — enrichissement mobiles (slot, activé en septembre)
+let DKEY=localStorage.getItem('pf_dkey')||'';   // Dropcontact — enrichissement email/coordonnées (slot, activé en septembre)
 const PAPI='https://api.pappers.fr/v2';
 const SAPI='https://google.serper.dev/search';
 const SNAPI='https://google.serper.dev/news';   // veille presse (plan Serper existant, fallback)
@@ -446,6 +448,7 @@ const ATAPI='https://api.airtable.com/v0';
 const AAPI='https://api.anthropic.com/v1/messages'; // narratif IA (appel direct navigateur)
 const AMODEL='claude-haiku-4-5';                 // lean : ~0,001 €/fiche. Passe en claude-opus-4-8 pour la meilleure plume.
 const GAPI='https://api.gdeltproject.org/api/v2/doc/doc'; // veille presse gratuite, sans clé
+const DAPI='https://api.dropcontact.com/v1/enrich/all'; // enrichissement coordonnées (async)
 const ATBASE='appWEqRM0HeQh5Qgo';   // Base CRM perso obsidian
 const ATTABLE='tblOg3nc1XdoTlInK'; // Table Prospectflow
 const DATAFILE='prospectflow_data.json';
@@ -506,6 +509,7 @@ async function linkFile(){
         localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);
         if(existing.keys.atkey){ATKEY=existing.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}
         if(existing.keys.akey){AKEY=existing.keys.akey;localStorage.setItem('pf_akey',AKEY)}
+        if(existing.keys.dkey){DKEY=existing.keys.dkey;localStorage.setItem('pf_dkey',DKEY)}
         closeSettings();
       }
       try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(fileTs))}catch(e){}
@@ -522,7 +526,7 @@ async function syncFileNow(){
   if(!_fileHandle)return;
   try{
     const w=await _fileHandle.createWritable();
-    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY,atkey:ATKEY,akey:AKEY},prospects:all,history:hist};
+    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY,atkey:ATKEY,akey:AKEY,dkey:DKEY},prospects:all,history:hist};
     await w.write(JSON.stringify(data,null,2));await w.close();
   }catch(e){_syncStatus='needs-permission';updateSyncBtn()}
 }
@@ -545,7 +549,7 @@ async function restoreFileOnBoot(){
           if(data.ts&&data.ts>localTs+1000){ // marge 1s pour éviter ping-pong
             if(data.prospects)all=data.prospects;
             if(data.history){hist=data.history;saveHist();renderHist()}
-            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}if(data.keys.akey){AKEY=data.keys.akey;localStorage.setItem('pf_akey',AKEY)}}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}if(data.keys.akey){AKEY=data.keys.akey;localStorage.setItem('pf_akey',AKEY)}if(data.keys.dkey){DKEY=data.keys.dkey;localStorage.setItem('pf_dkey',DKEY)}}
             try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
             filter();toast(`🔄 Sync depuis Drive: ${all.length} prospects`);
           }
@@ -570,7 +574,7 @@ async function reactivateFile(){
           if(data.ts>localTs+1000){
             if(data.prospects)all=data.prospects;
             if(data.history){hist=data.history;saveHist();renderHist()}
-            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}if(data.keys.akey){AKEY=data.keys.akey;localStorage.setItem('pf_akey',AKEY)}}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}if(data.keys.akey){AKEY=data.keys.akey;localStorage.setItem('pf_akey',AKEY)}if(data.keys.dkey){DKEY=data.keys.dkey;localStorage.setItem('pf_dkey',DKEY)}}
             try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
             filter();
           }
@@ -996,6 +1000,7 @@ function render(){
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
   <button class="btn-sm btn-ghost" onclick="genNarratif(${i})" title="${p.narratif?'Régénérer':'Générer'} le narratif patrimonial (IA)" style="${p.narratif?'color:var(--positive)':''}">🧠</button>
+  <button class="btn-sm btn-ghost" onclick="enrichContact(${i})" title="Enrichir email/coordonnées via Dropcontact (à la demande)">📇</button>
   <button class="btn-sm ${p._pushed?'btn-ghost':'btn-primary'}" onclick="pushAirtable(${i})" style="${p._pushed?'color:var(--positive)':''}" title="${p._pushed?'Déjà poussé — clic pour update':'Pousser sur Airtable'}">${p._pushed?'🔄 AT':'📤 Pousser'}</button>
   <button class="btn-sm btn-ghost" onclick="skipProspect(${i})" title="${p._skip?'Ré-afficher':'Masquer (hors-scope)'}" style="${p._skip?'color:var(--am)':''}">${p._skip?'↩️':'❌'}</button>
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
@@ -1173,13 +1178,16 @@ async function pushAirtable(i){
 // NARRATIF PATRIMONIAL (P1) — IA + veille presse + connecteurs
 // ══════════════════════════════════════════════════════════
 // États visuels des connecteurs (🟢 actif / 🟠 branché-non-configuré / 🔴 KO)
-function setConn(id,state){const el=$(id);if(!el)return;el.classList.remove('idle','off','dead','warn');if(state)el.classList.add(state)}
+function setConn(id,state,title){const el=$(id);if(!el)return;el.classList.remove('idle','off','dead','warn');if(state)el.classList.add(state);if(title!=null)el.title=title}
+// Au survol, chaque badge dit ce qui manque pour l'activer (gain de temps)
 function renderConnectors(){
-  setConn('bp',PKEY?'':'idle');     // Pappers (requis)
-  setConn('bs',SKEY?'':'idle');     // Serper (requis)
-  setConn('b_claude',AKEY?'':'idle'); // Narratif IA (optionnel)
-  setConn('b_airtable',ATKEY?'':'idle'); // Airtable (optionnel)
-  setConn('b_kaspr','idle');        // Kaspr (slot, activé en septembre)
+  setConn('bp',PKEY?'':'idle',PKEY?'Pappers — clé configurée 🟢':'Pappers REQUIS — clé manquante : clique ⚙️ pour la coller');
+  setConn('bs',SKEY?'':'idle',SKEY?'Serper — clé configurée 🟢':'Serper REQUIS — clé manquante : clique ⚙️ pour la coller');
+  setConn('b_bodacc','','BODACC — API publique gratuite, illimitée (aucune clé)');
+  setConn('b_gdelt','','GDELT — veille presse mondiale gratuite, sans clé (fallback Serper /news)');
+  setConn('b_claude',AKEY?'':'idle',AKEY?'Narratif IA — clé Anthropic configurée 🟢':'Narratif IA — colle ta clé Anthropic (sk-ant-…) dans ⚙️ pour activer le bouton 🧠');
+  setConn('b_airtable',ATKEY?'':'idle',ATKEY?'Airtable — PAT configuré 🟢':'Airtable — PAT manquant : ⚙️ (requis pour le bouton 📤 Pousser)');
+  setConn('b_dropcontact','idle',DKEY?'Dropcontact — clé OK ✅, non activé en masse (paiement prévu septembre). Bouton 📇 sur les cards = enrichissement à la demande.':'Dropcontact — branché mais clé manquante : colle-la dans ⚙️ (activation prévue septembre)');
 }
 
 function ageFr(s){const m=/(\d{2})\/(\d{2})\/(\d{4})/.exec(s||'');if(!m)return'';const b=new Date(+m[3],+m[2]-1,+m[1]);const a=(Date.now()-b.getTime())/3.15576e10;return a>0&&a<120?Math.floor(a):''}
@@ -1201,8 +1209,36 @@ async function ftPresse(p){
   return[];
 }
 
-// Slot enrichissement coordonnées — débranché jusqu'en septembre (Kaspr/Dropcontact)
-async function enrichContact(p){ if(!KKEY)return null; /* TODO sept. : brancher Kaspr ici */ return null; }
+// Enrichissement coordonnées via Dropcontact (API async : POST → polling). À la demande (bouton 📇).
+async function enrichContact(i){
+  const p=all[i];if(!p)return;
+  if(!DKEY){toast('🔑 Colle ta clé Dropcontact dans ⚙️ pour activer 📇');openSettings();return}
+  const parts=splitName(p.nom);
+  toast('📇 Dropcontact — recherche…');
+  try{
+    const post=await fetch(DAPI,{method:'POST',headers:{'X-Access-Token':DKEY,'Content-Type':'application/json'},body:JSON.stringify({data:[{first_name:parts.fn,last_name:parts.ln,company:p.societe||'',siren:p.siren||''}],siren:true,language:'fr'})});
+    if(!post.ok){setConn('b_dropcontact','dead');toast('❌ Dropcontact HTTP '+post.status+(post.status===403?' (clé/quota)':''));return}
+    const pj=await post.json().catch(()=>({}));const id=pj.request_id;
+    if(!id){toast('❌ Dropcontact : pas de request_id');return}
+    // Polling (~16s max) — Dropcontact traite en asynchrone
+    for(let t=0;t<8;t++){
+      await wait(2000);
+      const g=await fetch(`${DAPI}/${id}?access_token=${encodeURIComponent(DKEY)}`,{headers:{'X-Access-Token':DKEY}});
+      const gj=await g.json().catch(()=>({}));
+      if(gj.success&&Array.isArray(gj.data)&&gj.data.length){
+        const d=gj.data[0]||{};
+        let email='';const em=d.email;if(Array.isArray(em)&&em.length)email=em[0].email||em[0]||'';else if(typeof em==='string')email=em;
+        const phone=d.phone||d.mobile_phone||(Array.isArray(d.phones)&&d.phones[0]&&(d.phones[0].number||d.phones[0]))||'';
+        let chg=[];if(email&&!p.email){p.email=email;chg.push(email)}if(phone&&!p.tel){p.tel=phone;chg.push(phone)}
+        save();filter();
+        toast(chg.length?('✓ Dropcontact : '+chg.join(' · ')):'Dropcontact : rien de neuf trouvé');
+        return;
+      }
+      if(gj.error){toast('❌ Dropcontact : '+(gj.reason||'erreur'));return}
+    }
+    toast('⏳ Dropcontact : délai dépassé, réessaie dans 1 min');
+  }catch(e){setConn('b_dropcontact','dead');toast('❌ Dropcontact inaccessible — probable blocage CORS navigateur (voir note)')}
+}
 
 // Assemble le contexte factuel envoyé au modèle (aucune donnée inventée côté IA)
 function signalCtx(p,presse){
@@ -1237,15 +1273,16 @@ async function genNarratif(i){
 }
 
 // ── SETTINGS (clés API) ──
-function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('i_atkey').value=ATKEY;$('i_akey').value=AKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
+function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('i_atkey').value=ATKEY;$('i_akey').value=AKEY;$('i_dkey').value=DKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
 function closeSettings(){$('modalBg').classList.remove('on')}
 function saveSettings(){
-  const pk=$('i_pkey').value.trim(),sk=$('i_skey').value.trim(),at=$('i_atkey').value.trim(),ak=$('i_akey').value.trim();
+  const pk=$('i_pkey').value.trim(),sk=$('i_skey').value.trim(),at=$('i_atkey').value.trim(),ak=$('i_akey').value.trim(),dk=$('i_dkey').value.trim();
   if(!pk||!sk){toast('❌ Pappers et Serper requis');return}
-  PKEY=pk;SKEY=sk;ATKEY=at;AKEY=ak;
+  PKEY=pk;SKEY=sk;ATKEY=at;AKEY=ak;DKEY=dk;
   localStorage.setItem('pf_pkey',pk);localStorage.setItem('pf_skey',sk);
   if(at)localStorage.setItem('pf_atkey',at);else localStorage.removeItem('pf_atkey');
   if(ak)localStorage.setItem('pf_akey',ak);else localStorage.removeItem('pf_akey');
+  if(dk)localStorage.setItem('pf_dkey',dk);else localStorage.removeItem('pf_dkey');
   renderConnectors();
   closeSettings();toast('✓ Clés enregistrées');
   if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{});
