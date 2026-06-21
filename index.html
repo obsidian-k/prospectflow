@@ -95,7 +95,9 @@ a{color:inherit;text-decoration:none}
 .sb-go{padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
 .sb-go .btn-primary,.sb-go .btn-ac{width:100%;justify-content:center;padding:11px;font-size:13px;font-weight:600}
 .sb-foot{margin-top:auto;padding:var(--space-4) var(--space-5);border-top:1px solid var(--border);display:flex;flex-direction:column;gap:var(--space-3)}
-.sb-foot-actions{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.sb-foot-actions{display:flex;gap:4px;flex-wrap:nowrap;align-items:center;justify-content:space-between}
+.sb-foot-actions .btn-icon{padding:6px;min-width:30px}
+.sb-foot-actions .theme-toggle{width:30px;height:30px}
 .sb-foot .meta{font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
 
 /* ─── BUTTONS ─── */
@@ -119,7 +121,7 @@ a{color:inherit;text-decoration:none}
 .topbar-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 
 /* ─── BADGES API ─── */
-.badge-api{display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;font-weight:500;color:var(--positive);padding:5px 10px;border:1px solid rgba(16,185,129,.25);border-radius:var(--radius-full);background:rgba(16,185,129,.06);transition:all var(--t)}
+.badge-api{display:inline-flex;align-items:center;gap:5px;font-family:var(--font-mono);font-size:10px;font-weight:500;color:var(--positive);padding:4px 8px;border:1px solid rgba(16,185,129,.25);border-radius:var(--radius-full);background:rgba(16,185,129,.06);transition:all var(--t)}
 .badge-api i{width:6px;height:6px;border-radius:50%;background:var(--positive);box-shadow:0 0 4px rgba(16,185,129,.4)}
 .badge-api span{font-size:10px}
 .badge-api.warn{color:var(--warning);border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.06)}
@@ -1255,11 +1257,40 @@ function signalCtx(p,presse){
   };
 }
 
-// Génère le paragraphe « Enjeux patrimoniaux » via l'API Anthropic (clé en localStorage)
+// NARRATIF GRATUIT (sans clé, sans coût) — assemblé par règles à partir des données collectées
+function templateNarratif(p){
+  const a=ageFr(p.naissance);
+  const f=(p.finances&&p.finances[0])||{};
+  const eM=v=>(v==null)?null:(Math.abs(v)>=1e6?(v/1e6).toFixed(1).replace('.',',')+' M€':Math.round(v/1e3)+' k€');
+  const S=[];
+  let intro=`${p.nom}${a?` (${a} ans)`:''}, ${p.qualite||'dirigeant'} de ${p.societe||'la société'}`;
+  if(p.naf_lib)intro+=` (${p.naf_lib.toLowerCase()})`;
+  if(p.via_pm)intro+=`, détenue via la holding ${p.via_pm}`;
+  S.push(intro+'.');
+  let sig='';
+  if(p.cession){sig=`Signal : ${(p.cession.type||'cession')}${p.cession.date?` (${p.cession.date})`:''}${p.cession.parties&&p.cession.parties.length?` — ${p.cession.parties.join(' / ')}`:''}.`;}
+  else{const ev=(p.bodacc||[]).find(e=>/modif/i.test(e.type||e.label||''))||(p.bodacc||[])[0];if(ev&&(ev.label||ev.type))sig=`Signal : ${(ev.label||ev.type)}${ev.date?` (${ev.date})`:''}.`;}
+  if(sig)S.push(sig);
+  const mk=[],ca=eM(f.chiffre_affaires),rn=eM(f.resultat),tr=eM(f.tresorerie);
+  if(ca)mk.push(`CA ${ca}`);if(rn)mk.push(`résultat net ${rn}`);if(tr)mk.push(`trésorerie ${tr}`);
+  const noDebt=(f.ratio_endettement!=null&&f.ratio_endettement<=0)||(f.dettes_financieres!=null&&f.dettes_financieres<50000);
+  if(mk.length||noDebt)S.push('Marqueurs financiers : '+mk.join(', ')+(noDebt?(mk.length?', structure sans dette':'structure sans dette'):'')+(f.annee?` (${f.annee})`:'')+'.');
+  if(p.capital)S.push(`Capital social de ${Number(p.capital).toLocaleString('fr-FR')} €.`);
+  if(p.nb_mandats>=3)S.push(`${p.nb_mandats} mandats — dirigeant multi-sociétés.`);
+  let ang;
+  if(a>=65)ang=`Dirigeant en âge de transmettre : enjeu de transmission et de structuration patrimoniale à anticiper.`;
+  else if(a>=58)ang=`Dirigeant approchant l'âge de transmission : fenêtre de structuration patrimoniale à ouvrir.`;
+  else if(p.cession)ang=`Opération de cession : liquidité probable à réinvestir / structurer (cash-out).`;
+  else ang=`Profil patrimonial à qualifier : détention et optimisation à explorer.`;
+  S.push(ang);
+  return S.join(' ');
+}
+
+// Génère le paragraphe « Enjeux patrimoniaux ». Sans clé Anthropic → mode gratuit (règles). Avec clé → rédaction IA.
 async function genNarratif(i){
   const p=all[i];if(!p)return;
-  if(!AKEY){toast('🔑 Ajoute ta clé Anthropic (⚙️) pour activer le narratif IA');openSettings();return}
-  toast('🧠 Génération du narratif…');
+  if(!AKEY){p.narratif=templateNarratif(p);save();filter();toast('✓ Narratif (mode gratuit) — ajoute une clé Anthropic en ⚙️ pour une rédaction IA plus fine');return}
+  toast('🧠 Génération du narratif (IA)…');
   const presse=await ftPresse(p).catch(()=>[]);
   const ctx=signalCtx(p,presse);
   const sys="Tu es analyste senior pour un cabinet de gestion de patrimoine et de conseil en transmission/M&A. À partir des données FACTUELLES fournies (JSON) sur un dirigeant et sa société, rédige un unique paragraphe « Enjeux patrimoniaux » de 3 à 5 phrases, dense et concret, en français. Tu DOIS : (1) nommer le SIGNAL déclencheur (changement de gouvernance/mandats, cession, dépôt de comptes récent, âge du dirigeant) ; (2) expliquer pourquoi c'est le bon moment (transmission, cash-out, structuration patrimoniale) ; (3) citer les marqueurs de patrimoine réellement présents dans les données (trésorerie, résultat net, absence de dette, structure holding/SCI, capital) ; (4) mentionner l'âge des dirigeants s'il est fourni. Style sobre et professionnel, zéro formule creuse, zéro superlatif gratuit. INTERDICTION absolue d'inventer un chiffre, une date ou un fait absent des données. Réponds UNIQUEMENT par le paragraphe, sans titre ni préambule.";
