@@ -181,6 +181,10 @@ a{color:inherit;text-decoration:none}
 .card.is-signal{border-left-style:dashed}
 .card.sel-on{box-shadow:0 0 0 2px var(--obsidian-orange) inset}
 .card.kbfocus{box-shadow:0 0 0 2px var(--obsidian-orange);border-color:var(--obsidian-orange)}
+
+/* Bandeau d'alerte sauvegarde cloud OFF */
+.syncwarn{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--obsidian-orange-dim);border:1px solid var(--obsidian-orange);border-radius:var(--radius-lg);padding:10px 14px;margin-bottom:var(--space-4);font-size:13px;color:var(--text)}
+.syncwarn b{color:var(--obsidian-orange)}
 /* Legacy alias — gardé pour compat */
 .card.enriched,.card.featured{border-left:3px solid var(--obsidian-orange)}
 
@@ -419,6 +423,11 @@ a{color:inherit;text-decoration:none}
 
     <div class="content">
 
+      <div class="syncwarn" id="syncWarn" style="display:none">
+        <span>⚠️ <b>Sauvegarde cloud inactive</b> — tes prospects ne sont QUE dans ce navigateur. Si le PC plante, tu perds tout.</span>
+        <button class="btn btn-sm btn-primary" onclick="syncBtnClick()" id="syncWarnBtn">🔗 Activer la sauvegarde Drive</button>
+      </div>
+
       <div class="kpis">
         <div class="kpi k-ac"><div class="kpi-l">🎯 Cibles</div><div class="kpi-v" id="k1">0</div></div>
         <div class="kpi"><div class="kpi-l">⏳ Pending</div><div class="kpi-v" id="k5">0</div></div>
@@ -539,6 +548,10 @@ function updateSyncBtn(){
   if(_syncStatus==='linked'){b.textContent='🔗 Sync ON';b.style.borderColor='var(--gn)';b.style.color='var(--gn)';b.title='Cliquer pour délier'}
   else if(_syncStatus==='needs-permission'){b.textContent='🔓 Activer';b.style.borderColor='var(--am)';b.style.color='var(--am)';b.title='Cliquer pour ré-autoriser l\'accès au fichier'}
   else{b.textContent='🔗 Lier Drive';b.style.borderColor='';b.style.color='';b.title='Lier un fichier auto-save (Drive)'}
+  // Garde-fou : bandeau d'alerte tant que la sauvegarde cloud n'est pas active
+  const w=$('syncWarn'),wb=$('syncWarnBtn');
+  if(w){w.style.display=(_syncStatus==='linked')?'none':'flex';
+    if(wb)wb.textContent=(_syncStatus==='needs-permission')?'🔓 Ré-autoriser la sauvegarde':'🔗 Activer la sauvegarde Drive';}
 }
 
 function syncBtnClick(){
