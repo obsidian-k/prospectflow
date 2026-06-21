@@ -126,6 +126,12 @@ a{color:inherit;text-decoration:none}
 .badge-api.warn i{background:var(--warning)}
 .badge-api.dead{color:var(--negative);border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.06)}
 .badge-api.dead i{background:var(--negative)}
+/* idle = branché dans le code mais non configuré / non payé (orange pointillé) */
+.badge-api.idle{color:var(--obsidian-orange);border-color:var(--obsidian-orange);border-style:dashed;background:var(--obsidian-orange-dim)}
+.badge-api.idle i{background:var(--obsidian-orange);box-shadow:none}
+/* off = non applicable / inactif (gris discret) */
+.badge-api.off{color:var(--text-muted);border-color:var(--border);background:transparent}
+.badge-api.off i{background:var(--text-muted);box-shadow:none}
 
 /* ─── CONTENT ─── */
 .content{padding:var(--space-6);max-width:1480px;width:100%;margin:0 auto;flex:1;overflow-y:auto}
@@ -360,9 +366,13 @@ a{color:inherit;text-decoration:none}
         <div class="topbar-sub">Hunt · holdings &amp; cessions</div>
       </div>
       <div class="topbar-actions">
-        <div class="badge-api" id="bp"><i></i>Pappers <span id="bp-c"></span></div>
-        <div class="badge-api" id="bs"><i></i>Serper <span id="bs-c"></span></div>
-        <div class="badge-api"><i></i>BODACC ∞</div>
+        <div class="badge-api off" id="bp"><i></i>Pappers <span id="bp-c"></span></div>
+        <div class="badge-api off" id="bs"><i></i>Serper <span id="bs-c"></span></div>
+        <div class="badge-api" id="b_bodacc" title="API publique gratuite"><i></i>BODACC ∞</div>
+        <div class="badge-api" id="b_gdelt" title="Veille presse mondiale — gratuite, sans clé"><i></i>GDELT ∞</div>
+        <div class="badge-api off" id="b_claude" title="Narratif patrimonial IA (clé Anthropic)"><i></i>Narratif IA</div>
+        <div class="badge-api off" id="b_airtable" title="Push CRM (PAT Airtable)"><i></i>Airtable</div>
+        <div class="badge-api idle" id="b_kaspr" title="Enrichissement mobiles/emails — branché, à activer (Kaspr) en septembre"><i></i>Kaspr ◐</div>
         <button class="btn" id="syncBtn" onclick="syncBtnClick()" title="Auto-save Drive">🔗 Lier Drive</button>
       </div>
     </header>
@@ -410,6 +420,9 @@ a{color:inherit;text-decoration:none}
     <input id="i_skey" type="text" placeholder="92903f420cf7c8f0…" autocomplete="off" spellcheck="false">
     <label>PAT Airtable (optionnel — pour bouton 📤 sur cards)</label>
     <input id="i_atkey" type="text" placeholder="patXXXXXX..." autocomplete="off" spellcheck="false">
+    <label>Clé Anthropic (optionnel — pour le 🧠 Narratif patrimonial IA)</label>
+    <input id="i_akey" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+    <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">🟠 <b>Kaspr</b> (mobiles/emails perso) est branché dans le code mais désactivé — tu colleras la clé en septembre, aucun coût d'ici là.</p>
     <div class="modal-act">
       <button class="btn" onclick="closeSettings()">Annuler</button>
       <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
@@ -423,10 +436,16 @@ a{color:inherit;text-decoration:none}
 let PKEY=localStorage.getItem('pf_pkey')||'';
 let SKEY=localStorage.getItem('pf_skey')||'';
 let ATKEY=localStorage.getItem('pf_atkey')||''; // Airtable PAT pour push
+let AKEY=localStorage.getItem('pf_akey')||'';   // Anthropic — narratif patrimonial (optionnel)
+let KKEY=localStorage.getItem('pf_kkey')||'';   // Kaspr — enrichissement mobiles (slot, activé en septembre)
 const PAPI='https://api.pappers.fr/v2';
 const SAPI='https://google.serper.dev/search';
+const SNAPI='https://google.serper.dev/news';   // veille presse (plan Serper existant, fallback)
 const BAPI='https://bodacc-datadila.opendatasoft.com/api/records/1.0/search/';
 const ATAPI='https://api.airtable.com/v0';
+const AAPI='https://api.anthropic.com/v1/messages'; // narratif IA (appel direct navigateur)
+const AMODEL='claude-haiku-4-5';                 // lean : ~0,001 €/fiche. Passe en claude-opus-4-8 pour la meilleure plume.
+const GAPI='https://api.gdeltproject.org/api/v2/doc/doc'; // veille presse gratuite, sans clé
 const ATBASE='appWEqRM0HeQh5Qgo';   // Base CRM perso obsidian
 const ATTABLE='tblOg3nc1XdoTlInK'; // Table Prospectflow
 const DATAFILE='prospectflow_data.json';
@@ -486,6 +505,7 @@ async function linkFile(){
         PKEY=existing.keys.pkey;SKEY=existing.keys.skey;
         localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);
         if(existing.keys.atkey){ATKEY=existing.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}
+        if(existing.keys.akey){AKEY=existing.keys.akey;localStorage.setItem('pf_akey',AKEY)}
         closeSettings();
       }
       try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(fileTs))}catch(e){}
@@ -502,7 +522,7 @@ async function syncFileNow(){
   if(!_fileHandle)return;
   try{
     const w=await _fileHandle.createWritable();
-    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY,atkey:ATKEY},prospects:all,history:hist};
+    const data={v:'pf5',ts:Date.now(),keys:{pkey:PKEY,skey:SKEY,atkey:ATKEY,akey:AKEY},prospects:all,history:hist};
     await w.write(JSON.stringify(data,null,2));await w.close();
   }catch(e){_syncStatus='needs-permission';updateSyncBtn()}
 }
@@ -525,7 +545,7 @@ async function restoreFileOnBoot(){
           if(data.ts&&data.ts>localTs+1000){ // marge 1s pour éviter ping-pong
             if(data.prospects)all=data.prospects;
             if(data.history){hist=data.history;saveHist();renderHist()}
-            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}if(data.keys.akey){AKEY=data.keys.akey;localStorage.setItem('pf_akey',AKEY)}}
             try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
             filter();toast(`🔄 Sync depuis Drive: ${all.length} prospects`);
           }
@@ -550,7 +570,7 @@ async function reactivateFile(){
           if(data.ts>localTs+1000){
             if(data.prospects)all=data.prospects;
             if(data.history){hist=data.history;saveHist();renderHist()}
-            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}}
+            if(data.keys&&data.keys.pkey&&data.keys.skey){PKEY=data.keys.pkey;SKEY=data.keys.skey;localStorage.setItem('pf_pkey',PKEY);localStorage.setItem('pf_skey',SKEY);if(data.keys.atkey){ATKEY=data.keys.atkey;localStorage.setItem('pf_atkey',ATKEY)}if(data.keys.akey){AKEY=data.keys.akey;localStorage.setItem('pf_akey',AKEY)}}
             try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(data.ts))}catch(e){}
             filter();
           }
@@ -764,7 +784,8 @@ function mkP(co,dir,q){
     adr_siege:[s.adresse_ligne_1,s.code_postal,s.ville].filter(Boolean).join(', '),
     naf:co.code_naf||'',naf_lib:co.libelle_code_naf||'',
     linkedin:'',email:'',tel:'',website:'',nb_mandats:0,mandats:'',
-    interests:'',parcours:'',statut:'À contacter',notes:'',_done:false};
+    finances:Array.isArray(co.finances)?co.finances.slice(0,3):[],
+    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',_done:false};
 }
 
 // ═══════════════════════════════════════
@@ -959,6 +980,7 @@ function render(){
     ${p.interests?`<div class="ir"><span class="l">Intérêts</span><span class="v">${esc(p.interests)}</span></div>`:''}
     ${p.parcours?`<div class="ir"><span class="l">Parcours</span><span class="v" style="color:var(--am)">${esc(p.parcours)}</span></div>`:''}
     ${p.cession?`<div class="ir"><span class="l">Cession</span><span class="v" style="color:var(--ac);font-weight:700">${esc((p.cession.date||'')+' '+(p.cession.type||''))}${p.cession.parties&&p.cession.parties.length?' — '+esc(p.cession.parties.join(' / ')):''}</span></div>`:''}
+    ${p.narratif?`<div class="ir"><span class="l">Enjeux</span><span class="v" style="font-style:italic;line-height:1.5">${esc(p.narratif)}</span></div>`:''}
   </div>
   <div class="c-col">
     <div class="c-col-t">Société</div>
@@ -967,11 +989,13 @@ function render(){
       <div class="cmini-d"><span>${esc(p.siren)}</span><span>${esc(p.date_crea)}</span><span class="cap">${cap}</span></div>
     </div>
     <div class="ir" style="margin-top:5px"><span class="l">Siège</span><span class="v">${esc(p.adr_siege)}</span></div>
+    ${(p.finances&&p.finances[0]&&finLine(p.finances[0]))?`<div class="ir"><span class="l">Finances</span><span class="v" style="font-family:var(--font-mono);font-size:11px">${esc(finLine(p.finances[0]))}</span></div>`:''}
   </div>
 </div>
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
+  <button class="btn-sm btn-ghost" onclick="genNarratif(${i})" title="${p.narratif?'Régénérer':'Générer'} le narratif patrimonial (IA)" style="${p.narratif?'color:var(--positive)':''}">🧠</button>
   <button class="btn-sm ${p._pushed?'btn-ghost':'btn-primary'}" onclick="pushAirtable(${i})" style="${p._pushed?'color:var(--positive)':''}" title="${p._pushed?'Déjà poussé — clic pour update':'Pousser sur Airtable'}">${p._pushed?'🔄 AT':'📤 Pousser'}</button>
   <button class="btn-sm btn-ghost" onclick="skipProspect(${i})" title="${p._skip?'Ré-afficher':'Masquer (hors-scope)'}" style="${p._skip?'color:var(--am)':''}">${p._skip?'↩️':'❌'}</button>
   <button class="btn-sm btn-ghost" onclick="toggleEdit(${i})">✏️</button>
@@ -1039,11 +1063,11 @@ function toast(m){const t=document.createElement('div');t.className='toast';t.in
 
 function exportExcel(){
   if(!vis.length){alert('Rien à exporter.');return}
-  const H=['Nom','Prénom','Email','Téléphone','Origine','Statut','LinkedIn','Pappers','Société','Poste','Potentiel','Anniversaire','SIREN','Capital','Forme','Adresse perso','Nb mandats','Mandats','Siège','Intérêts','Parcours','Score','Notes'];
+  const H=['Nom','Prénom','Email','Téléphone','Origine','Statut','LinkedIn','Pappers','Société','Poste','Potentiel','Anniversaire','SIREN','Capital','Forme','Adresse perso','Nb mandats','Mandats','Siège','Intérêts','Parcours','Enjeux patrimoniaux','Score','Notes'];
   const rows=[H,...vis.map(p=>{
     const parts=splitName(p.nom);
     const pot=[p.capital?`${Number(p.capital).toLocaleString('fr-FR')}€`:'',p.nb_mandats?`${p.nb_mandats} mandats`:'',p.mandats||'',p.adr_siege||''].filter(Boolean).join(' | ');
-    return[parts.ln,parts.fn,p.email||'',p.tel||'','ProspectFlow','À contacter',p.linkedin||'',`https://www.pappers.fr/entreprise/${p.siren}`,p.societe||'',p.qualite||'',pot,p.naissance||'',p.siren||'',p.capital||'',shortF(p.forme),p.adr_perso||'',p.nb_mandats||'',p.mandats||'',p.adr_siege||'',p.interests||'',p.parcours||'',p._liScore||'',p.notes||''];
+    return[parts.ln,parts.fn,p.email||'',p.tel||'','ProspectFlow','À contacter',p.linkedin||'',`https://www.pappers.fr/entreprise/${p.siren}`,p.societe||'',p.qualite||'',pot,p.naissance||'',p.siren||'',p.capital||'',shortF(p.forme),p.adr_perso||'',p.nb_mandats||'',p.mandats||'',p.adr_siege||'',p.interests||'',p.parcours||'',p.narratif||'',p._liScore||'',p.notes||''];
   })];
   const ws=XLSX.utils.aoa_to_sheet(rows);ws['!cols']=H.map(()=>({wch:20}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Prospects');
@@ -1145,15 +1169,84 @@ async function pushAirtable(i){
   }catch(e){toast(`❌ Push échoué: ${e.message}`)}
 }
 
+// ══════════════════════════════════════════════════════════
+// NARRATIF PATRIMONIAL (P1) — IA + veille presse + connecteurs
+// ══════════════════════════════════════════════════════════
+// États visuels des connecteurs (🟢 actif / 🟠 branché-non-configuré / 🔴 KO)
+function setConn(id,state){const el=$(id);if(!el)return;el.classList.remove('idle','off','dead','warn');if(state)el.classList.add(state)}
+function renderConnectors(){
+  setConn('bp',PKEY?'':'idle');     // Pappers (requis)
+  setConn('bs',SKEY?'':'idle');     // Serper (requis)
+  setConn('b_claude',AKEY?'':'idle'); // Narratif IA (optionnel)
+  setConn('b_airtable',ATKEY?'':'idle'); // Airtable (optionnel)
+  setConn('b_kaspr','idle');        // Kaspr (slot, activé en septembre)
+}
+
+function ageFr(s){const m=/(\d{2})\/(\d{2})\/(\d{4})/.exec(s||'');if(!m)return'';const b=new Date(+m[3],+m[2]-1,+m[1]);const a=(Date.now()-b.getTime())/3.15576e10;return a>0&&a<120?Math.floor(a):''}
+// Résumé compact d'un exercice comptable Pappers (CA / résultat / tréso)
+function finLine(f){if(!f)return'';const e=v=>(v==null)?'':(Math.abs(v)>=1e6?(v/1e6).toFixed(1).replace('.',',')+' M€':Math.round(v/1e3)+' k€');const a=[];if(f.chiffre_affaires!=null)a.push('CA '+e(f.chiffre_affaires));if(f.resultat!=null)a.push('RN '+e(f.resultat));if(f.tresorerie!=null)a.push('Tréso '+e(f.tresorerie));const yr=f.annee||f.date_cloture_exercice||'';return a.join(' · ')+(yr?` (${yr})`:'')}
+
+// Veille presse : GDELT (gratuit, sans clé) puis Serper news (plan existant) en fallback
+async function ftPresse(p){
+  const q=p.societe||p.nom;if(!q)return[];
+  try{
+    const u=`${GAPI}?query=${encodeURIComponent('"'+q+'" sourcelang:fra')}&mode=ArtList&maxrecords=5&format=json&sort=DateDesc`;
+    const r=await fetch(u);
+    if(r.ok){const j=await r.json().catch(()=>({}));const arts=(j.articles||[]).map(a=>({titre:a.title,date:a.seendate,source:a.domain})).filter(a=>a.titre);if(arts.length){setConn('b_gdelt','');return arts}}
+  }catch(e){/* CORS/offline → fallback Serper */}
+  if(SKEY&&!(credits.serper!==null&&credits.serper<=0)){
+    try{const r=await fetch(SNAPI,{method:'POST',headers:{'X-API-KEY':SKEY,'Content-Type':'application/json'},body:JSON.stringify({q,gl:'fr',hl:'fr',num:5})});
+      if(r.ok){const j=await r.json();return(j.news||[]).map(n=>({titre:n.title,date:n.date,source:n.source})).filter(a=>a.titre)}}catch(e){}
+  }
+  return[];
+}
+
+// Slot enrichissement coordonnées — débranché jusqu'en septembre (Kaspr/Dropcontact)
+async function enrichContact(p){ if(!KKEY)return null; /* TODO sept. : brancher Kaspr ici */ return null; }
+
+// Assemble le contexte factuel envoyé au modèle (aucune donnée inventée côté IA)
+function signalCtx(p,presse){
+  return{
+    dirigeant:p.nom,qualite:p.qualite,naissance:p.naissance,age:ageFr(p.naissance),
+    societe:p.societe,siren:p.siren,forme:shortF(p.forme),activite:p.naf_lib,
+    capital_eur:Number(p.capital)||0,siege:p.adr_siege,
+    structure_via_holding:p.via_pm||'',mandats:p.mandats,nb_mandats:p.nb_mandats,
+    finances_recentes:p.finances||[],
+    evenements_bodacc:(p.bodacc||[]).slice(0,4),
+    cession:p.cession||null,
+    parcours:p.parcours||'',interets:p.interests||'',
+    presse_recente:presse||[]
+  };
+}
+
+// Génère le paragraphe « Enjeux patrimoniaux » via l'API Anthropic (clé en localStorage)
+async function genNarratif(i){
+  const p=all[i];if(!p)return;
+  if(!AKEY){toast('🔑 Ajoute ta clé Anthropic (⚙️) pour activer le narratif IA');openSettings();return}
+  toast('🧠 Génération du narratif…');
+  const presse=await ftPresse(p).catch(()=>[]);
+  const ctx=signalCtx(p,presse);
+  const sys="Tu es analyste senior pour un cabinet de gestion de patrimoine et de conseil en transmission/M&A. À partir des données FACTUELLES fournies (JSON) sur un dirigeant et sa société, rédige un unique paragraphe « Enjeux patrimoniaux » de 3 à 5 phrases, dense et concret, en français. Tu DOIS : (1) nommer le SIGNAL déclencheur (changement de gouvernance/mandats, cession, dépôt de comptes récent, âge du dirigeant) ; (2) expliquer pourquoi c'est le bon moment (transmission, cash-out, structuration patrimoniale) ; (3) citer les marqueurs de patrimoine réellement présents dans les données (trésorerie, résultat net, absence de dette, structure holding/SCI, capital) ; (4) mentionner l'âge des dirigeants s'il est fourni. Style sobre et professionnel, zéro formule creuse, zéro superlatif gratuit. INTERDICTION absolue d'inventer un chiffre, une date ou un fait absent des données. Réponds UNIQUEMENT par le paragraphe, sans titre ni préambule.";
+  try{
+    const r=await fetch(AAPI,{method:'POST',headers:{'x-api-key':AKEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},body:JSON.stringify({model:AMODEL,max_tokens:500,system:sys,messages:[{role:'user',content:'Données du prospect :\n'+JSON.stringify(ctx,null,1)}]})});
+    if(!r.ok){const t=await r.text().catch(()=>'');setConn('b_claude','dead');toast('❌ Narratif IA — HTTP '+r.status+(/credit|balance/i.test(t)?' (crédits Anthropic épuisés ?)':/authentication|x-api-key/i.test(t)?' (clé invalide)':''));return}
+    const j=await r.json();const txt=((j.content||[]).map(c=>c.text||'').join('')).trim();
+    if(txt){p.narratif=txt;setConn('b_claude','');save();filter();toast('✓ Narratif généré')}
+    else toast('❌ Réponse IA vide');
+  }catch(e){setConn('b_claude','dead');toast('❌ Narratif IA inaccessible (vérifie la clé / connexion)')}
+}
+
 // ── SETTINGS (clés API) ──
-function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('i_atkey').value=ATKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
+function openSettings(){$('i_pkey').value=PKEY;$('i_skey').value=SKEY;$('i_atkey').value=ATKEY;$('i_akey').value=AKEY;$('modalBg').classList.add('on');setTimeout(()=>$('i_pkey').focus(),50)}
 function closeSettings(){$('modalBg').classList.remove('on')}
 function saveSettings(){
-  const pk=$('i_pkey').value.trim(),sk=$('i_skey').value.trim(),at=$('i_atkey').value.trim();
+  const pk=$('i_pkey').value.trim(),sk=$('i_skey').value.trim(),at=$('i_atkey').value.trim(),ak=$('i_akey').value.trim();
   if(!pk||!sk){toast('❌ Pappers et Serper requis');return}
-  PKEY=pk;SKEY=sk;ATKEY=at;
+  PKEY=pk;SKEY=sk;ATKEY=at;AKEY=ak;
   localStorage.setItem('pf_pkey',pk);localStorage.setItem('pf_skey',sk);
   if(at)localStorage.setItem('pf_atkey',at);else localStorage.removeItem('pf_atkey');
+  if(ak)localStorage.setItem('pf_akey',ak);else localStorage.removeItem('pf_akey');
+  renderConnectors();
   closeSettings();toast('✓ Clés enregistrées');
   if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{});
 }
@@ -1168,7 +1261,7 @@ function toggleTheme(){const cur=document.documentElement.getAttribute('data-the
 applyTheme(localStorage.getItem('pf_theme')||'light');
 
 // ── INIT ──
-load();loadHist();renderHist();filter();updateSyncBtn();
+load();loadHist();renderHist();filter();updateSyncBtn();renderConnectors();
 // Tente de restaurer le lien Drive (asynchrone) PUIS demande les clés si toujours manquantes
 restoreFileOnBoot().finally(()=>{if(!PKEY||!SKEY)openSettings()});
 </script>
