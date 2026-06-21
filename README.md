@@ -1,51 +1,56 @@
 # ProspectFlow — Pappers Hunting
 
-App single-file (HTML/JS vanilla) pour identifier et qualifier des dirigeants à partir de Pappers, BODACC et LinkedIn.
+App single-file (HTML/JS vanilla) pour **identifier, trier et qualifier des dirigeants** en situation patrimoniale (création de holding, cession d'entreprise, dirigeant âgé à fort capital) à partir de Pappers, BODACC, LinkedIn et du radar hebdo.
 
-## Cibles supportées
+## Workflow V2 (triage Cibles / Pending)
 
-- **Holdings (NAF 6420Z)** — sociétés holding actives, filtrables par dépt / CP / capital / forme juridique / date de création.
-- **Créations récentes** — 3 derniers mois par défaut.
-- **Cessions d'entreprise (BODACC)** — annonces "Ventes et cessions" avec filtre capital côté client (par défaut ≥ 100 k€ pour exclure les commerces de détail).
-- **Recherche libre** — tous les filtres dispo, pas de preset.
+1. **Radar hebdo** (gratuit, sans clé) → `signals.json` : balaye BODACC + API gouv, score les signaux.
+2. **📡 Importer signaux radar** dans l'app → les signaux arrivent dans l'onglet **⏳ Pending**.
+3. **Trier** : on sélectionne les bons (case à cocher / ⭐ / mode **☑️ Sélection** + actions groupées) → **🎯 Cibles**. Le reste reste en Pending.
+4. **🔍 Enrichir** un signal → pipeline Pappers complet (dirigeants + mandats + LinkedIn + BODACC) → devient une vraie fiche Cible.
+5. **📇 Dropcontact** (à la demande) → email/téléphone de la cible.
+6. **📤 Pousser** sur Airtable + **🧠 Narratif** patrimonial IA (optionnel).
 
-## Pipeline (4 étapes, cap dur 20 prospects/clic)
+> Une recherche manuelle (sidebar) arrive directement en **Cibles**. Les signaux radar arrivent en **Pending** à trier.
 
-1. **Source** : Pappers `/recherche` OU BODACC `annonces-commerciales` (cessions).
-2. **Détails Pappers** `/entreprise` → extraction dirigeants (représentants, BE, ou via PM holding mère).
-3. **Mandats Pappers** + **LinkedIn via Serper** (matching strict prénom+nom dans le title, seuil 60/100).
+## Cibles supportées (recherche manuelle)
+
+- **Holdings (NAF 6420Z)** — filtrables dépt / CP / capital / forme / date.
+- **Cessions d'entreprise (BODACC)** — annonces "Ventes et cessions", filtre capital côté client.
+
+## Pipeline (cap dur 20 prospects/clic)
+
+1. **Source** : Pappers `/recherche` OU BODACC `annonces-commerciales`.
+2. **Détails** Pappers `/entreprise` → dirigeants (représentants, BE, ou via PM holding mère).
+3. **Mandats** Pappers + **LinkedIn via Serper** (matching strict prénom+nom, anti-homonymes).
 4. **BODACC events** (créations / modifications / radiations).
+
+## Radar automatique (GitHub Action)
+
+`.github/workflows/radar.yml` lance `scripts/radar.mjs` **chaque lundi ~06h30 Paris**, commit `signals.json` + `radar_email.html`, et envoie l'email récap des leads chauds.
+
+**Secrets à configurer** (Settings → Secrets and variables → Actions) : `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD` (mot de passe d'application Gmail), `MAIL_TO`. Variable optionnelle : `RADAR_DEPTS` (défaut : Île-de-France).
+
+Lancer à la main : `node scripts/radar.mjs` (env : `RADAR_DEPTS`, `RADAR_DAYS`, `RADAR_GOVCAP`).
 
 ## Démarrage
 
-1. Ouvrir `index.html` dans un navigateur (Chrome/Edge/Firefox) — pas de build, pas de serveur.
-2. Renseigner les filtres dans la sidebar gauche.
-3. Cliquer **Rechercher & Enrichir**.
-4. **Charger plus** pour la page suivante (toujours 20 max).
-5. Export Excel ou JSON depuis la topbar.
+1. Ouvrir `index.html` (Chrome/Edge/Firefox) — pas de build, pas de serveur.
+2. Renseigner les clés API via ⚙️ (stockées **uniquement dans le navigateur**).
+3. Rechercher, ou **📡 Importer signaux radar**, puis trier en Cibles.
 
-## Persistance
+## Sauvegarde / Sync
 
-- **localStorage** : prospects + historique des recherches (auto-save).
-- **Export/Import JSON** : pour changer de PC ou partager une base entre collabs.
+- **localStorage** : auto-save permanent (prospects + historique).
+- **🔗 Sync (File System Access)** : lie un fichier `.json` une fois → chaque modif s'y écrit automatiquement. Range-le dans Google Drive / OneDrive pour une vraie sauvegarde cloud + multi-PC. **ON** = lié/actif · **🔓 Activer** = ré-autoriser après redémarrage navigateur.
+- **Export/Import JSON** manuel pour partager une base.
 
-## Clés API (en clair dans `index.html`)
+## Clés API
 
-⚠️ Le repo est **privé** car les clés sont hardcodées (Pappers, Serper). Ne pas le rendre public sans extraction des clés vers un fichier `config.local.js` gitignored.
+⚠️ Repo **privé**. Clés stockées en localStorage (jamais dans le code, jamais transmises ailleurs).
 
-- **Pappers** : v2 — facturation au request_cost (suivi en topbar)
-- **Serper** : 2500 crédits / mois (suivi en topbar)
-- **BODACC** : API publique gratuite (datadila.opendatasoft.com)
+- **Pappers** v2 (facturé au request_cost) · **Serper** (LinkedIn, 2500 crédits/mois) · **BODACC** + **API gouv** (gratuits) · **Dropcontact** (email/tél, à la demande) · **Anthropic** (narratif, optionnel) · **Airtable** (push CRM, optionnel).
 
 ## Données
 
-`prospectflow_data.json` est **gitignored** : c'est de la donnée perso (PII : nom, naissance, adresse). Chaque collab a sa propre base locale + peut exporter/importer pour partager.
-
-## Architecture
-
-Tout est dans `index.html` (~620 lignes). Sections :
-- Lignes 1-160 : CSS
-- Lignes 161-254 : HTML (topbar, sidebar, main grid)
-- Lignes 256-619 : JavaScript (pipeline, persistance, render, export)
-
-Pas de build step. Vanilla JS, fetch API, pas de framework.
+`prospectflow_data.json` est **gitignored** (PII). `signals.json` est versionné (données publiques BODACC, régénéré chaque semaine).

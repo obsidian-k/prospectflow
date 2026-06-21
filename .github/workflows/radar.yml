@@ -1,0 +1,71 @@
+name: Radar ProspectFlow (hebdo)
+
+# Balaye BODACC + API gouv (gratuit, sans clé), génère signals.json + radar_email.html,
+# commit le résultat dans le repo, puis envoie l'email récap des leads chauds.
+#
+# Déclenchement : chaque lundi ~06h30 Paris (04:30 UTC l'été / 05:30 UTC l'hiver),
+# ou manuellement via l'onglet Actions (workflow_dispatch).
+#
+# Secrets requis pour l'email (Settings → Secrets and variables → Actions) :
+#   MAIL_SERVER   ex: smtp.gmail.com
+#   MAIL_PORT     ex: 465
+#   MAIL_USERNAME ex: sebastien.gros1@gmail.com
+#   MAIL_PASSWORD mot de passe d'application Gmail (PAS le mot de passe du compte)
+#   MAIL_TO       destinataire(s), séparés par des virgules
+# Variable optionnelle :
+#   RADAR_DEPTS   ex: 75,92,78  (défaut : Île-de-France complète)
+
+on:
+  schedule:
+    - cron: '30 4 * * 1'   # lundi 04:30 UTC ≈ 06:30 Paris (été)
+  workflow_dispatch:
+    inputs:
+      depts:
+        description: 'Départements (CSV), ex: 75,92'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  radar:
+    runs-on: ubuntu-latest
+    env:
+      MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Lancer le radar
+        env:
+          RADAR_DEPTS: ${{ inputs.depts || vars.RADAR_DEPTS || '75,77,78,91,92,93,94,95' }}
+        run: node scripts/radar.mjs
+
+      - name: Commit signals.json + radar_email.html
+        run: |
+          git config user.name  "radar-bot"
+          git config user.email "actions@github.com"
+          git add signals.json radar_email.html
+          if git diff --cached --quiet; then
+            echo "Aucun changement de signaux."
+          else
+            git commit -m "chore(radar): signals.json hebdo $(date -u +%Y-%m-%d)"
+            git push
+          fi
+
+      - name: Email récap (leads chauds)
+        if: ${{ env.MAIL_PASSWORD != '' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "🎯 Radar ProspectFlow — leads chauds de la semaine"
+          to: ${{ secrets.MAIL_TO }}
+          from: ProspectFlow Radar <${{ secrets.MAIL_USERNAME }}>
+          html_body: file://radar_email.html

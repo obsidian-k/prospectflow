@@ -78,8 +78,16 @@ a{color:inherit;text-decoration:none}
 .brand-wm .slate{color:var(--text)}
 .brand-wm .orange{color:var(--obsidian-orange)}
 .brand-wm .sub{font-family:var(--font-mono);font-size:10px;color:var(--text-muted);letter-spacing:0;text-transform:none;margin-top:3px}
-.sb-s{padding:var(--space-4) var(--space-5);border-bottom:1px solid var(--border)}
+.sb-s{padding:var(--space-3) var(--space-5);border-bottom:1px solid var(--border)}
 .sb-s.no-border{border-bottom:0}
+/* Accordéon filtres avancés (lean : repliés par défaut) */
+.sb-adv{padding-top:var(--space-3);padding-bottom:var(--space-3)}
+.sb-adv summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;margin:0}
+.sb-adv summary::-webkit-details-marker{display:none}
+.sb-adv .adv-chev{font-size:10px;color:var(--text-muted);transition:transform var(--t)}
+.sb-adv[open] .adv-chev{transform:rotate(90deg)}
+.sb-adv .adv-body{margin-top:var(--space-3);display:flex;flex-direction:column;gap:var(--space-3)}
+.sb-adv .adv-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:6px}
 .sb-t{font-family:var(--font-sans);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:var(--space-3)}
 .f{margin-bottom:var(--space-2)}.f:last-child{margin:0}
 .f label{display:block;font-size:10px;font-weight:600;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
@@ -165,12 +173,29 @@ a{color:inherit;text-decoration:none}
 .grid{display:flex;flex-direction:column;gap:var(--space-3)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden;transition:border-color var(--t),box-shadow var(--t)}
 .card:hover{border-color:var(--border-strong)}
-/* States: à pousser (orange CTA) / poussé (vert success) / skip (muted discret) */
-.card.state-topush{border-left:3px solid var(--obsidian-orange)}
+/* States: cible (orange CTA) / poussé (vert success) / pending (neutre) / skip (muted discret) */
+.card.state-topush,.card.state-cible{border-left:3px solid var(--obsidian-orange)}
 .card.state-pushed{border-left:3px solid var(--positive)}
+.card.state-pending{border-left:3px solid var(--border-strong)}
 .card.state-skip{opacity:.55}
+.card.is-signal{border-left-style:dashed}
+.card.sel-on{box-shadow:0 0 0 2px var(--obsidian-orange) inset}
 /* Legacy alias — gardé pour compat */
 .card.enriched,.card.featured{border-left:3px solid var(--obsidian-orange)}
+
+/* Sélection multiple */
+.selbox{position:absolute;top:10px;left:10px;width:22px;height:22px;border-radius:6px;border:2px solid var(--border-strong);background:var(--surface);cursor:pointer;display:grid;place-items:center;font-size:13px;color:#fff;z-index:5;transition:all var(--t)}
+.selbox.on{background:var(--obsidian-orange);border-color:var(--obsidian-orange)}
+.card{position:relative}
+.card.selmode .c-top{padding-left:42px}
+.selbar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border-strong);border-radius:var(--radius-xl);padding:10px 14px;display:none;align-items:center;gap:10px;box-shadow:var(--shadow-modal);z-index:250;font-size:13px;flex-wrap:wrap}
+.selbar.on{display:flex}
+.selbar .cnt{font-weight:700;color:var(--obsidian-orange);font-family:var(--font-mono)}
+/* Badge signal radar */
+.sig-badge{padding:2px 7px;border-radius:var(--radius-full);font-family:var(--font-mono);font-size:10px;font-weight:600;background:var(--obsidian-orange-dim);color:var(--obsidian-orange)}
+.sig-badge.warm{background:var(--surface-hover);color:var(--text-muted)}
+.star{cursor:pointer;font-size:15px;line-height:1;user-select:none;transition:transform var(--t)}
+.star:hover{transform:scale(1.2)}
 
 .c-top{display:flex;align-items:center;justify-content:space-between;padding:var(--space-4) var(--space-5);gap:var(--space-2)}
 .c-id{display:flex;align-items:center;gap:var(--space-3)}
@@ -308,37 +333,42 @@ a{color:inherit;text-decoration:none}
       </div>
     </div>
 
-    <div class="sb-s">
-      <div class="sb-t">Création</div>
-      <div class="r2">
-        <div class="f"><label>Depuis</label><input type="date" id="s_dmin"></div>
-        <div class="f"><label>Jusqu'au</label><input type="date" id="s_dmax"></div>
+    <details class="sb-s sb-adv">
+      <summary class="sb-t">Filtres avancés <span class="adv-chev">▸</span></summary>
+      <div class="adv-body">
+        <div class="adv-grp">
+          <div class="adv-lbl">Création</div>
+          <div class="r2">
+            <div class="f"><label>Depuis</label><input type="date" id="s_dmin"></div>
+            <div class="f"><label>Jusqu'au</label><input type="date" id="s_dmax"></div>
+          </div>
+        </div>
+        <div class="adv-grp">
+          <div class="adv-lbl">Capital (€)</div>
+          <div class="r2">
+            <div class="f"><label>Min</label><input type="number" id="s_cmin" placeholder="10000"></div>
+            <div class="f"><label>Max</label><input type="number" id="s_cmax"></div>
+          </div>
+        </div>
+        <div class="adv-grp">
+          <div class="adv-lbl">Forme juridique</div>
+          <div class="chips" id="chips">
+            <div class="chip on" data-v="5710" onclick="tog(this)">SAS</div>
+            <div class="chip on" data-v="5720" onclick="tog(this)">SASU</div>
+            <div class="chip" data-v="5510" onclick="tog(this)">SA</div>
+            <div class="chip" data-v="5308" onclick="tog(this)">SCA</div>
+            <div class="chip" data-v="5499" onclick="tog(this)">SARL</div>
+            <div class="chip" data-v="5498" onclick="tog(this)">EURL</div>
+          </div>
+        </div>
       </div>
-    </div>
-
-    <div class="sb-s">
-      <div class="sb-t">Capital</div>
-      <div class="r2">
-        <div class="f"><label>Min (€)</label><input type="number" id="s_cmin" placeholder="10000"></div>
-        <div class="f"><label>Max (€)</label><input type="number" id="s_cmax"></div>
-      </div>
-    </div>
-
-    <div class="sb-s">
-      <div class="sb-t">Forme juridique</div>
-      <div class="chips" id="chips">
-        <div class="chip on" data-v="5710" onclick="tog(this)">SAS</div>
-        <div class="chip on" data-v="5720" onclick="tog(this)">SASU</div>
-        <div class="chip" data-v="5510" onclick="tog(this)">SA</div>
-        <div class="chip" data-v="5308" onclick="tog(this)">SCA</div>
-        <div class="chip" data-v="5499" onclick="tog(this)">SARL</div>
-        <div class="chip" data-v="5498" onclick="tog(this)">EURL</div>
-      </div>
-    </div>
+    </details>
 
     <div class="sb-go">
       <button class="btn btn-primary" id="goBtn" onclick="currentPage=1;lastTotal=0;run()">Rechercher &amp; Enrichir</button>
       <button class="btn" id="moreBtn" onclick="loadMore()" style="display:none;width:100%;justify-content:center;margin-top:6px;font-size:12px">Charger plus</button>
+      <button class="btn" id="sigBtn" onclick="importSignals()" style="width:100%;justify-content:center;margin-top:6px;font-size:12px" title="Charger signals.json (radar hebdo) dans Pending">📡 Importer signaux radar</button>
+      <input type="file" id="sigFile" accept=".json,application/json" style="display:none" onchange="onSignalsFile(event)">
     </div>
 
     <div class="sb-s no-border" id="histSection" style="display:none">
@@ -374,7 +404,7 @@ a{color:inherit;text-decoration:none}
         <div class="badge-api" id="b_gdelt" title="Veille presse mondiale — gratuite, sans clé"><i></i>GDELT ∞</div>
         <div class="badge-api off" id="b_claude" title="Narratif patrimonial IA (clé Anthropic)"><i></i>Narratif IA</div>
         <div class="badge-api off" id="b_airtable" title="Push CRM (PAT Airtable)"><i></i>Airtable</div>
-        <div class="badge-api idle" id="b_dropcontact" title="Enrichissement email/coordonnées — branché, activation prévue septembre"><i></i>Dropcontact ◐</div>
+        <div class="badge-api off" id="b_dropcontact" title="Enrichissement email/coordonnées (clé Dropcontact)"><i></i>Dropcontact</div>
         <button class="btn" id="syncBtn" onclick="syncBtnClick()" title="Auto-save Drive">🔗 Lier Drive</button>
       </div>
     </header>
@@ -382,7 +412,8 @@ a{color:inherit;text-decoration:none}
     <div class="content">
 
       <div class="kpis">
-        <div class="kpi k-ac"><div class="kpi-l">Prospects</div><div class="kpi-v" id="k1">0</div></div>
+        <div class="kpi k-ac"><div class="kpi-l">🎯 Cibles</div><div class="kpi-v" id="k1">0</div></div>
+        <div class="kpi"><div class="kpi-l">⏳ Pending</div><div class="kpi-v" id="k5">0</div></div>
         <div class="kpi k-bl"><div class="kpi-l">Enrichis (LinkedIn)</div><div class="kpi-v" id="k2">0</div></div>
         <div class="kpi k-gn"><div class="kpi-l">Poussés Airtable</div><div class="kpi-v" id="k4">0</div></div>
         <div class="kpi"><div class="kpi-l">Affichés</div><div class="kpi-v" id="k3">0</div></div>
@@ -393,11 +424,14 @@ a{color:inherit;text-decoration:none}
         <div class="srch"><svg viewBox="0 0 16 16"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg><input id="q" placeholder="Filtrer…" oninput="filter()"></div>
         <div class="pills" id="pills">
           <div class="pill on" data-f="" onclick="setP(this)">Tous</div>
+          <div class="pill" data-f="cible" onclick="setP(this)">🎯 Cibles <span id="cnt-cible" style="font-weight:700;margin-left:2px"></span></div>
+          <div class="pill" data-f="pending" onclick="setP(this)">⏳ Pending <span id="cnt-pending" style="font-weight:700;margin-left:2px"></span></div>
           <div class="pill" data-f="topush" onclick="setP(this)">À pousser <span id="cnt-topush" style="font-weight:700;margin-left:2px"></span></div>
           <div class="pill" data-f="enriched" onclick="setP(this)">Enrichis</div>
           <div class="pill" data-f="⚡3+" onclick="setP(this)">⚡ 3+</div>
           <div class="pill" data-f="skip" onclick="setP(this)" style="opacity:.65">❌ Skipés</div>
         </div>
+        <button class="btn btn-sm" id="selBtn" onclick="toggleSelMode()" title="Mode sélection multiple (cases à cocher)">☑️ Sélection</button>
       </div>
 
       <div class="grid" id="grid">
@@ -409,6 +443,18 @@ a{color:inherit;text-decoration:none}
 
     </div>
   </main>
+</div>
+
+<!-- ============ BARRE SÉLECTION GROUPÉE ============ -->
+<div class="selbar" id="selbar">
+  <span class="cnt" id="selCnt">0</span><span>sélectionné(s)</span>
+  <button class="btn btn-sm" onclick="selAll()">Tout</button>
+  <button class="btn btn-sm" onclick="selNone()">Aucun</button>
+  <span style="width:1px;height:18px;background:var(--border)"></span>
+  <button class="btn btn-sm btn-primary" onclick="bulkSet('cible')">🎯 → Cibles</button>
+  <button class="btn btn-sm" onclick="bulkSet('pending')">⏳ → Pending</button>
+  <button class="btn btn-sm" onclick="bulkSet('skip')">❌ → Skip</button>
+  <button class="btn btn-sm btn-ghost" onclick="toggleSelMode()">✕ Fermer</button>
 </div>
 
 <!-- ============ MODAL SETTINGS ============ -->
@@ -424,9 +470,9 @@ a{color:inherit;text-decoration:none}
     <input id="i_atkey" type="text" placeholder="patXXXXXX..." autocomplete="off" spellcheck="false">
     <label>Clé Anthropic (optionnel — pour le 🧠 Narratif patrimonial IA)</label>
     <input id="i_akey" type="text" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-    <label>Clé Dropcontact (optionnel — bouton 📇 enrichissement email/coordonnées)</label>
+    <label>Clé Dropcontact (bouton 📇 — email/téléphone des cibles)</label>
     <input id="i_dkey" type="text" placeholder="xxxxxxxx-xxxx-xxxx-..." autocomplete="off" spellcheck="false">
-    <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">🟠 <b>Dropcontact</b> est branché : la clé reste dans ce navigateur, et l'enrichissement ne se déclenche qu'au clic sur 📇 (aucun coût tant que tu ne cliques pas).</p>
+    <p style="font-size:11px;color:var(--text-muted);margin:8px 0 0">🟢 <b>Dropcontact actif</b> : la clé reste dans ce navigateur. L'enrichissement ne se déclenche qu'au clic sur 📇 sur une fiche (facturé à l'appel, ~0,02-0,04 €/contact).</p>
     <div class="modal-act">
       <button class="btn" onclick="closeSettings()">Annuler</button>
       <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
@@ -441,7 +487,7 @@ let PKEY=localStorage.getItem('pf_pkey')||'';
 let SKEY=localStorage.getItem('pf_skey')||'';
 let ATKEY=localStorage.getItem('pf_atkey')||''; // Airtable PAT pour push
 let AKEY=localStorage.getItem('pf_akey')||'';   // Anthropic — narratif patrimonial (optionnel)
-let DKEY=localStorage.getItem('pf_dkey')||'';   // Dropcontact — enrichissement email/coordonnées (slot, activé en septembre)
+let DKEY=localStorage.getItem('pf_dkey')||'';   // Dropcontact — enrichissement email/téléphone (actif, à la demande via 📇)
 const PAPI='https://api.pappers.fr/v2';
 const SAPI='https://google.serper.dev/search';
 const SNAPI='https://google.serper.dev/news';   // veille presse (plan Serper existant, fallback)
@@ -457,6 +503,7 @@ const DATAFILE='prospectflow_data.json';
 const MAX_RESULTS=20; // Cap dur par clic — maitrise du temps de chasse
 
 let all=[],vis=[],pF='',currentPage=1,perPage=MAX_RESULTS,lastTotal=0;
+let selMode=false,selSet=new Set(); // sélection multiple (clés _k)
 let _cessionCtx={}; // siren → {date, type, commercant, parties} pour preset cessions
 const credits={pappers:0,serper:null};
 const $=id=>document.getElementById(id);
@@ -466,7 +513,9 @@ function save(){
   try{localStorage.setItem('pf5',JSON.stringify(all));localStorage.setItem('pf_savedTs',String(Date.now()))}catch(e){}
   if(_fileHandle&&_syncStatus==='linked')syncFileNow().catch(()=>{});
 }
-function load(){try{const d=localStorage.getItem('pf5');if(d)all=JSON.parse(d)}catch(e){}}
+function load(){try{const d=localStorage.getItem('pf5');if(d)all=JSON.parse(d)}catch(e){}
+  // Migration : les prospects pré-triage (sans _cible) étaient tous "actifs" → Cibles
+  for(const p of all){if(p._cible===undefined&&!p._signal)p._cible=true}}
 
 // ── DRIVE AUTO-SAVE (file picker once, ensuite tout est synchro auto) ──
 let _fileHandle=null,_syncStatus='unlinked'; // 'unlinked' | 'needs-permission' | 'linked'
@@ -791,7 +840,41 @@ function mkP(co,dir,q){
     naf:co.code_naf||'',naf_lib:co.libelle_code_naf||'',
     linkedin:'',email:'',tel:'',website:'',nb_mandats:0,mandats:'',
     finances:Array.isArray(co.finances)?co.finances.slice(0,3):[],
-    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',_done:false};
+    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',_done:false,_cible:true};
+}
+
+// ── Extraction dirigeants depuis une fiche /entreprise (partagé run() + enrichOne()) ──
+async function extractDirigeants(d){
+  const out=[];
+  const reps=d.representants||[];
+  const phys=reps.filter(r=>!r.personne_morale);
+  const pmB=reps.find(r=>r.personne_morale&&/(président|gérant)/i.test(r.qualite||''));
+  let found=false;
+  for(const dir of phys){const q=(dir.qualites||[dir.qualite]).join(', ');if(/(commissaire|surveillance)/i.test(q)&&!/(président)/i.test(q))continue;out.push(mkP(d,dir,q));found=true}
+  if(!found){
+    const benes=d.beneficiaires_effectifs||[];
+    for(const b of benes){if(b.nom&&b.prenom){const via=pmB?`via ${pmB.denomination||pmB.nom_complet}`:'BE';out.push(mkP(d,{nom:b.nom,prenom:b.prenom,prenom_usuel:b.prenom_usuel||b.prenom,sexe:b.sexe||'',date_de_naissance_formate:b.date_de_naissance_complete_formatee||'',ville_de_naissance:b.ville_de_naissance||'',pays_de_naissance:b.pays_de_naissance||'',adresse_ligne_1:b.adresse_ligne_1||'',code_postal:b.code_postal||'',ville:b.ville||'',qualite:`Bénéficiaire effectif (${b.pourcentage_parts||'?'}%)`,personne_morale:false},`Bénéficiaire — ${via}`));found=true}}
+    if(!found&&pmB&&pmB.siren){try{const pm=await ftEntreprise(pmB.siren).catch(()=>null);if(pm){for(const dir of(pm.representants||[]).filter(r=>!r.personne_morale&&/(président|gérant)/i.test(r.qualite||''))){const p=mkP(d,dir,`${(dir.qualites||[dir.qualite]).join(', ')} — via ${pmB.denomination||pmB.nom_complet}`);p.via_pm=pmB.denomination||pmB.nom_complet;out.push(p)}}}catch(e){}}
+  }
+  return out;
+}
+
+// ── Construit un placeholder "signal radar" (pending, non enrichi) ──
+function mkSignal(sig){
+  const dir0=(sig.dirigeants&&sig.dirigeants[0])||'';
+  const nom=dir0.replace(/\s*\(\d+\).*$/,'').trim();
+  return{_k:'sig_'+sig.siren,_signal:true,_cible:false,_done:false,
+    nom,qualite:sig.signal_label||sig.famille||'Signal radar',sexe:'',
+    naissance:'',ville_naissance:'',pays_naissance:'',adr_perso:'',
+    societe:sig.societe||'',siren:sig.siren||'',forme:'',date_crea:'',
+    capital:Number(sig.capital)||0,
+    adr_siege:[sig.cp,sig.ville].filter(Boolean).join(' '),
+    naf:sig.naf||'',naf_lib:'',linkedin:'',email:'',tel:'',website:'',
+    nb_mandats:0,mandats:(sig.dirigeants||[]).join(', '),finances:[],
+    interests:'',parcours:'',narratif:'',statut:'À contacter',notes:'',
+    _score:sig.score||0,_hot:!!sig.hot,signal_label:sig.signal_label||'',
+    famille:sig.famille||'',_sigDate:sig.date||'',bodacc_url:sig.bodacc_url||'',
+    cession:sig.famille==='cession'?{date:sig.date||'',type:sig.signal_label||'Cession',parties:sig.parties||[]}:null};
 }
 
 // ═══════════════════════════════════════
@@ -871,16 +954,7 @@ async function run(){
       if(!d)continue;
       if(isCession){const cap=Number(d.capital)||0;if(cmin&&cap<cmin)continue;if(cmax&&cap>cmax)continue}
       kept++;
-      const reps=d.representants||[];
-      const phys=reps.filter(r=>!r.personne_morale);
-      const pmB=reps.find(r=>r.personne_morale&&/(président|gérant)/i.test(r.qualite||''));
-      let found=false;
-      for(const dir of phys){const q=(dir.qualites||[dir.qualite]).join(', ');if(/(commissaire|surveillance)/i.test(q)&&!/(président)/i.test(q))continue;newP.push(mkP(d,dir,q));found=true}
-      if(!found){
-        const benes=d.beneficiaires_effectifs||[];
-        for(const b of benes){if(b.nom&&b.prenom){const via=pmB?`via ${pmB.denomination||pmB.nom_complet}`:'BE';newP.push(mkP(d,{nom:b.nom,prenom:b.prenom,prenom_usuel:b.prenom_usuel||b.prenom,sexe:b.sexe||'',date_de_naissance_formate:b.date_de_naissance_complete_formatee||'',ville_de_naissance:b.ville_de_naissance||'',pays_de_naissance:b.pays_de_naissance||'',adresse_ligne_1:b.adresse_ligne_1||'',code_postal:b.code_postal||'',ville:b.ville||'',qualite:`Bénéficiaire effectif (${b.pourcentage_parts||'?'}%)`,personne_morale:false},`Bénéficiaire — ${via}`));found=true}}
-        if(!found&&pmB&&pmB.siren){try{const pm=await ftEntreprise(pmB.siren).catch(()=>null);if(pm){for(const dir of(pm.representants||[]).filter(r=>!r.personne_morale&&/(président|gérant)/i.test(r.qualite||''))){const p=mkP(d,dir,`${(dir.qualites||[dir.qualite]).join(', ')} — via ${pmB.denomination||pmB.nom_complet}`);p.via_pm=pmB.denomination||pmB.nom_complet;newP.push(p)}}}catch(e){}}
-      }
+      newP.push(...await extractDirigeants(d));
       g.innerHTML=ldr(`2/4 — ${kept}/${MAX_RESULTS} retenues…`,15+Math.round((i/sirens.length)*20));
     }
     if(!newP.length){g.innerHTML='<div class="empty"><h3>Aucun dirigeant identifiable</h3><p>Aucune entreprise ne matche vos critères.</p></div>';return}
@@ -937,7 +1011,9 @@ function filter(){
     // Skip: par défaut on cache, sauf si pill 'skip' est actif
     if(pF==='skip')return !!p._skip;
     if(p._skip)return false;
-    if(pF==='topush')return !p._pushed;
+    if(pF==='cible')return !!p._cible;
+    if(pF==='pending')return !p._cible;
+    if(pF==='topush')return p._cible&&!p._pushed;
     if(pF==='enriched')return !!(p.email||p.tel||p.linkedin);
     if(pF==='⚡3+')return(parseInt(p.nb_mandats)||0)>=3;
     return true;
@@ -959,13 +1035,20 @@ function render(){
     const lnk=hasL?`<a href="${esc(p.linkedin)}" target="_blank"${liTitle}>LinkedIn ↗</a>`:`<a href="javascript:void(0)" onclick="pasteLI(${i})" style="color:var(--obsidian-orange);font-weight:600" title="Coller l'URL LinkedIn">📋 Coller URL</a>`;
     const pappersUrl=`https://www.pappers.fr/entreprise/${p.siren}`;
     const webH=p.website?`<a href="https://${esc(p.website)}" target="_blank">${esc(p.website)}</a>`:'';
-    // État de la card: pushed (vert) > skip (muted) > topush (orange)
-    const cardState=p._skip?'state-skip':(p._pushed?'state-pushed':'state-topush');
+    // État de la card: skip (muted) > pushed (vert) > cible (orange) > pending (neutre)
+    const cardState=p._skip?'state-skip':(p._pushed?'state-pushed':(p._cible?'state-cible':'state-pending'));
+    const isSig=!!p._signal;
+    const selOn=selSet.has(p._k);
+    const selBox=selMode?`<div class="selbox${selOn?' on':''}" onclick="toggleSel(${i});event.stopPropagation()">${selOn?'✓':''}</div>`:'';
+    const star=`<span class="star" onclick="toggleCible(${i})" title="${p._cible?'Retirer des cibles':'Marquer comme cible'}">${p._cible?'⭐':'☆'}</span>`;
+    const sigBadge=isSig?`<span class="sig-badge${p._hot?'':' warm'}" title="Signal radar — score ${p._score||0}">📡 ${p._score||0}</span>`:'';
+    const nameTxt=esc(p.nom)||'<span style="color:var(--text-muted);font-style:italic">dirigeant à enrichir</span>';
 
-    return`<div class="card ${cardState}">
+    return`<div class="card ${cardState}${isSig?' is-signal':''}${selMode?' selmode':''}${selOn?' sel-on':''}">
+${selBox}
 <div class="c-top">
-  <div class="c-id"><div class="${av}">${inits(p.nom)}</div><div><div class="c-name">${esc(p.nom)}${via}</div><div class="c-role">${esc(p.qualite)}</div></div></div>
-  <div class="c-tags"><span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
+  <div class="c-id"><div class="${av}">${inits(p.nom||p.societe)}</div><div><div class="c-name">${star} ${nameTxt}${via}</div><div class="c-role">${esc(p.qualite)}</div></div></div>
+  <div class="c-tags">${sigBadge}<span class="mbadge ${m>=3?'hi':'lo'}">${m>=3?'⚡':''}${m}</span></div>
 </div>
 <div class="c-contact">
   <div class="cc${hasE?' has':''}"><svg viewBox="0 0 16 16"><path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2z"/></svg>${hasE?`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`:'<span class="nc">—</span>'}</div>
@@ -1000,6 +1083,8 @@ function render(){
 </div>
 <div class="c-foot">
   <input value="${esc(p.notes||'')}" placeholder="Note…" onchange="note(${i},this.value)">
+  ${isSig?`<button class="btn-sm btn-primary" onclick="enrichOne(${i})" title="Enrichir via Pappers : dirigeants + mandats + LinkedIn">🔍 Enrichir</button>`:''}
+  ${isSig&&p.bodacc_url?`<a class="btn-sm btn-ghost" href="${esc(p.bodacc_url)}" target="_blank" title="Annonce BODACC source" style="text-decoration:none">📄</a>`:''}
   ${!p.interests?`<button class="btn-sm btn-ghost" onclick="scanInterests(${i})" title="Scanner intérêts via Google">🎯</button>`:''}
   <button class="btn-sm btn-ghost" onclick="genNarratif(${i})" title="${p.narratif?'Régénérer':'Générer'} le narratif patrimonial (IA)" style="${p.narratif?'color:var(--positive)':''}">🧠</button>
   <button class="btn-sm btn-ghost" onclick="enrichContact(${i})" title="Enrichir email/coordonnées via Dropcontact (à la demande)">📇</button>
@@ -1021,11 +1106,16 @@ function render(){
 
 function kpis(){
   const live=all.filter(p=>!p._skip);
-  $('k1').textContent=live.length;
+  const cibles=live.filter(p=>p._cible),pending=live.filter(p=>!p._cible);
+  $('k1').textContent=cibles.length;
+  $('k5').textContent=pending.length;
   $('k2').textContent=live.filter(p=>p.linkedin).length;
   $('k3').textContent=vis.length;
   $('k4').textContent=live.filter(p=>p._pushed).length;
-  const cntTopush=$('cnt-topush');if(cntTopush){const n=live.filter(p=>!p._pushed).length;cntTopush.textContent=n?`(${n})`:''}
+  const setCnt=(id,n)=>{const el=$(id);if(el)el.textContent=n?`(${n})`:''};
+  setCnt('cnt-cible',cibles.length);
+  setCnt('cnt-pending',pending.length);
+  setCnt('cnt-topush',cibles.filter(p=>!p._pushed).length);
 }
 function toggleEdit(i){const el=$('edit-'+i);if(el)el.style.display=el.style.display==='none'?'block':'none'}
 function upd(i,field,val){
@@ -1065,7 +1155,37 @@ function skipProspect(i){
   if(!confirm(`Masquer "${p.nom}" (hors-scope, homonyme, etc.) ?\nIl ne s'affichera plus, sauf via le filtre "❌ Skipés".`))return;
   p._skip=true;save();filter();toast(`❌ ${p.nom} masqué`);
 }
-function clearAll(){if(confirm('Supprimer tous les prospects ?')){all=[];save();filter();toast('Réinitialisé')}}
+// ── TRIAGE CIBLE / PENDING ──
+function toggleCible(i){
+  const p=all[i];p._cible=!p._cible;
+  if(p._cible&&p._skip)p._skip=false; // promouvoir une cible la dé-skippe
+  save();filter();toast(p._cible?`🎯 ${p.nom||p.societe} → Cibles`:`⏳ ${p.nom||p.societe} → Pending`);
+}
+
+// ── MODE SÉLECTION MULTIPLE ──
+function toggleSelMode(){
+  selMode=!selMode;if(!selMode)selSet.clear();
+  const b=$('selBtn');if(b){b.classList.toggle('btn-primary',selMode);b.textContent=selMode?'☑️ Sélection ON':'☑️ Sélection'}
+  updateSelbar();render();
+}
+function toggleSel(i){const k=all[i]._k;if(selSet.has(k))selSet.delete(k);else selSet.add(k);updateSelbar();render()}
+function selAll(){vis.forEach(p=>selSet.add(p._k));updateSelbar();render()}
+function selNone(){selSet.clear();updateSelbar();render()}
+function updateSelbar(){const bar=$('selbar'),c=$('selCnt');if(c)c.textContent=selSet.size;if(bar)bar.classList.toggle('on',selMode)}
+function bulkSet(state){
+  if(!selSet.size){toast('Aucune sélection');return}
+  let n=0;
+  for(const p of all){if(!selSet.has(p._k))continue;n++;
+    if(state==='cible'){p._cible=true;p._skip=false}
+    else if(state==='pending'){p._cible=false;p._skip=false}
+    else if(state==='skip'){p._skip=true;p._cible=false}
+  }
+  selSet.clear();save();filter();updateSelbar();
+  const lbl=state==='cible'?'🎯 Cibles':state==='pending'?'⏳ Pending':'❌ Skip';
+  toast(`${n} prospect(s) → ${lbl}`);
+}
+
+function clearAll(){if(confirm('Supprimer tous les prospects ?')){all=[];selSet.clear();save();filter();toast('Réinitialisé')}}
 function toast(m){const t=document.createElement('div');t.className='toast';t.innerHTML=`<span style="color:var(--gn)">✓</span>${m}`;document.body.appendChild(t);setTimeout(()=>t.remove(),3000)}
 
 function exportExcel(){
@@ -1105,6 +1225,74 @@ function showHist(i){
   document.querySelector('#pills .pill[data-f=""]').classList.add('on');$('q').value='';
   vis=all.filter(p=>hk.has(p._k));render();
   toast(`${h.label} — ${vis.length} prospects`);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// IMPORT SIGNAUX RADAR (signals.json) → Pending, puis triage + Enrichir à la demande
+// ══════════════════════════════════════════════════════════════════════════
+async function importSignals(){
+  // 1) tente signals.json servi à côté de la page (cas http/serveur) ; 2) sinon file picker (cas file://)
+  try{
+    const r=await fetch('signals.json',{cache:'no-store'});
+    if(r.ok){const j=await r.json();ingestSignals(j);return}
+  }catch(e){}
+  $('sigFile').click();
+}
+function onSignalsFile(ev){
+  const f=ev.target.files&&ev.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{ingestSignals(JSON.parse(rd.result))}catch(e){toast('❌ signals.json invalide')}};
+  rd.readAsText(f);ev.target.value='';
+}
+function ingestSignals(j){
+  const sigs=Array.isArray(j)?j:(j.signals||[]);
+  if(!sigs.length){toast('Aucun signal dans le fichier');return}
+  const bySiren=new Set(all.map(p=>p.siren).filter(Boolean));
+  let added=0;
+  for(const s of sigs){
+    if(!s.siren||bySiren.has(s.siren))continue; // déjà importé ou déjà prospect enrichi
+    all.push(mkSignal(s));bySiren.add(s.siren);added++;
+  }
+  save();
+  // bascule sur l'onglet Pending pour trier les nouveaux signaux
+  pF='pending';
+  document.querySelectorAll('#pills .pill').forEach(p=>p.classList.remove('on'));
+  const pend=document.querySelector('#pills .pill[data-f="pending"]');if(pend)pend.classList.add('on');
+  $('q').value='';filter();
+  // historique (garde la trace de l'import)
+  hist.unshift({label:`📡 Radar ${(j.depts||[]).join(',')} ${j.window_days?j.window_days+'j':''}`.trim(),count:added,params:{},prospects:[],date:new Date().toLocaleDateString('fr-FR')});
+  if(hist.length>20)hist=hist.slice(0,20);saveHist();renderHist();
+  toast(`📡 ${added} signal(aux) → Pending${added<sigs.length?` · ${sigs.length-added} déjà présents`:''}`);
+}
+
+// Enrichit un signal pending : /entreprise → dirigeants → mandats + LinkedIn → BODACC, puis → Cibles
+async function enrichOne(i){
+  const sig=all[i];if(!sig||!sig.siren){toast('Pas de SIREN');return}
+  if(!checkKeys())return;
+  const siren=sig.siren;
+  toast('🔍 Pappers : dirigeants…');
+  const d=await ftEntreprise(siren).catch(()=>null);
+  if(!d){toast('❌ Pappers : société introuvable ou quota épuisé');return}
+  const newP=await extractDirigeants(d);
+  if(!newP.length){toast('❌ Aucun dirigeant identifiable sur ce SIREN');return}
+  for(const p of newP){p._cible=true;if(sig.cession)p.cession=sig.cession}
+  const keys=new Set(all.map(p=>p._k));const ins=[];
+  for(const p of newP){if(!keys.has(p._k)){all.push(p);keys.add(p._k);ins.push(p)}}
+  toast(`🔗 Mandats + LinkedIn (${ins.length})…`);
+  for(const p of ins){
+    try{const parts=splitName(p.nom);const dr=await ftMandats(parts.fn,parts.ln).catch(()=>null);
+      if(dr&&dr.resultats){let tot=0;const names=[];
+        for(const r of dr.resultats){tot+=r.nb_entreprises_total||0;for(const e of(r.entreprises||[])){if(e.dirigeant_actuel)names.push(e.nom_entreprise);if(!p._bestCo&&e.dirigeant_actuel&&!e.entreprise_cessee&&e.effectif_max>0&&!/SCI|holding/i.test(e.nom_entreprise)){p._bestCo=e.nom_entreprise;p._bestCoSiren=e.siren}}}
+        p.nb_mandats=tot;p.mandats=[...new Set(names)].filter(n=>n.toUpperCase()!==(p.societe||'').toUpperCase()).slice(0,5).join(', ')}}catch(e){}
+    try{if(!p.linkedin){const ville=p.ville_naissance||extractVille(p.adr_perso)||extractVille(p.adr_siege)||'';await findLinkedIn(p,ville)}}catch(e){}
+    p._done=true;
+  }
+  try{const rr=await fetch(`${BAPI}?dataset=annonces-commerciales&q=${siren}&sort=-dateparution&rows=3`).then(r=>r.json()).catch(()=>({records:[]}));
+    const evts=(rr.records||[]).map(r=>{const f=r.fields||{};return{date:f.dateparution||'',type:f.familleavis||'',label:f.familleavis_lib||''}});
+    ins.forEach(p=>p.bodacc=evts);}catch(e){}
+  const idx=all.indexOf(sig);if(idx>=0)all.splice(idx,1);selSet.delete(sig._k);
+  save();filter();
+  toast(`✓ ${ins.length} dirigeant(s) enrichi(s) → Cibles`);
 }
 
 // ── PUSH AIRTABLE (UPSERT : POST si nouveau, PATCH si existe avec nouvelles données) ──
@@ -1189,7 +1377,7 @@ function renderConnectors(){
   setConn('b_gdelt','','GDELT — veille presse mondiale gratuite, sans clé (fallback Serper /news)');
   setConn('b_claude',AKEY?'':'idle',AKEY?'Narratif IA — clé Anthropic configurée 🟢':'Narratif IA — colle ta clé Anthropic (sk-ant-…) dans ⚙️ pour activer le bouton 🧠');
   setConn('b_airtable',ATKEY?'':'idle',ATKEY?'Airtable — PAT configuré 🟢':'Airtable — PAT manquant : ⚙️ (requis pour le bouton 📤 Pousser)');
-  setConn('b_dropcontact','idle',DKEY?'Dropcontact — clé OK ✅, non activé en masse (paiement prévu septembre). Bouton 📇 sur les cards = enrichissement à la demande.':'Dropcontact — branché mais clé manquante : colle-la dans ⚙️ (activation prévue septembre)');
+  setConn('b_dropcontact',DKEY?'':'off',DKEY?'Dropcontact — clé configurée 🟢. Bouton 📇 sur une fiche = enrichissement email/tél à la demande (facturé à l\'appel).':'Dropcontact — colle ta clé dans ⚙️ pour activer le bouton 📇 (email/tél des cibles)');
 }
 
 function ageFr(s){const m=/(\d{2})\/(\d{2})\/(\d{4})/.exec(s||'');if(!m)return'';const b=new Date(+m[3],+m[2]-1,+m[1]);const a=(Date.now()-b.getTime())/3.15576e10;return a>0&&a<120?Math.floor(a):''}
